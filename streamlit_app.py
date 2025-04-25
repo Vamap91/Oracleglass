@@ -251,7 +251,8 @@ def main():
         admin_mode = st.checkbox("Modo Administrador", value=st.session_state.is_admin)
         if admin_mode != st.session_state.is_admin:
             st.session_state.is_admin = admin_mode
-            st.experimental_rerun()
+            # Usar st.rerun() em vez de st.experimental_rerun()
+            st.rerun()
         
         st.divider()
         
