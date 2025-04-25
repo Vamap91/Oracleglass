@@ -30,16 +30,15 @@ if "combined_text" not in st.session_state:
     st.session_state.combined_text = ""  # Texto combinado de todos os PDFs
 if "history" not in st.session_state:
     st.session_state.history = []  # Histórico de consultas
+if "is_admin" not in st.session_state:
+    st.session_state.is_admin = False  # Modo do usuário (admin ou comum)
+
+# Obter a chave da API do OpenAI das secrets do Streamlit
+openai_api_key = st.secrets.get("openai", {}).get("api_key", "")
+if openai_api_key:
+    openai.api_key = openai_api_key
 
 # Funções utilitárias
-def configure_openai_api():
-    """Configura a API da OpenAI com a chave fornecida."""
-    api_key = st.session_state.get("openai_api_key", "")
-    if api_key:
-        openai.api_key = api_key
-        return True
-    return False
-
 def get_file_hash(file_content):
     """Gera um hash único para o conteúdo do arquivo."""
     return hashlib.md5(file_content).hexdigest()
@@ -112,6 +111,9 @@ def process_pdf(uploaded_file):
             # Atualizar o texto combinado
             update_combined_text()
             
+            # Salvar automaticamente o estado após processar um PDF
+            save_state_to_file()
+            
             st.success(f"Arquivo '{uploaded_file.name}' processado com sucesso!")
         except Exception as e:
             st.error(f"Erro ao processar o arquivo: {str(e)}")
@@ -134,12 +136,12 @@ def update_combined_text():
 
 def query_ai(query):
     """Processa uma consulta usando a API da OpenAI."""
-    if not configure_openai_api():
-        st.error("Por favor, insira uma chave de API válida da OpenAI.")
+    if not openai_api_key:
+        st.error("A chave da API OpenAI não está configurada. Por favor, contate o administrador.")
         return None
     
     if not st.session_state.combined_text:
-        st.warning("Nenhum documento foi processado ainda. Por favor, carregue pelo menos um PDF.")
+        st.warning("Nenhum documento foi processado ainda. Por favor, aguarde até que o administrador adicione documentos ao sistema.")
         return None
     
     try:
@@ -168,10 +170,50 @@ def reset_system():
     st.session_state.pdf_contents = {}
     st.session_state.processed_files = []
     st.session_state.combined_text = ""
+    
+    # Salvar o estado vazio
+    save_state_to_file()
+    
     st.success("Sistema resetado com sucesso. Todos os dados foram limpos.")
 
-def save_state():
-    """Salva o estado atual do sistema."""
+def save_state_to_file():
+    """Salva o estado atual do sistema em um arquivo."""
+    state_data = {
+        "pdf_contents": st.session_state.pdf_contents,
+        "processed_files": st.session_state.processed_files,
+        "combined_text": st.session_state.combined_text
+    }
+    
+    try:
+        # Criar diretório 'data' se não existir
+        os.makedirs('data', exist_ok=True)
+        
+        # Salvar estado em arquivo
+        with open('data/oraculo_state.dat', 'wb') as f:
+            pickle.dump(state_data, f)
+    except Exception as e:
+        st.error(f"Erro ao salvar estado: {str(e)}")
+
+def load_state_from_file():
+    """Carrega o estado salvo anteriormente a partir de um arquivo."""
+    try:
+        # Verificar se o arquivo existe
+        if os.path.exists('data/oraculo_state.dat'):
+            with open('data/oraculo_state.dat', 'rb') as f:
+                state_data = pickle.loads(f.read())
+                
+                st.session_state.pdf_contents = state_data.get("pdf_contents", {})
+                st.session_state.processed_files = state_data.get("processed_files", [])
+                st.session_state.combined_text = state_data.get("combined_text", "")
+                
+                return True
+        return False
+    except Exception as e:
+        st.error(f"Erro ao carregar estado: {str(e)}")
+        return False
+
+def download_state():
+    """Permite baixar o estado atual do sistema."""
     state_data = {
         "pdf_contents": st.session_state.pdf_contents,
         "processed_files": st.session_state.processed_files,
@@ -188,13 +230,11 @@ def save_state():
             file_name=f"oraculo_state_{int(time.time())}.dat",
             mime="application/octet-stream"
         )
-        
-        st.success("Estado pronto para download. Clique no botão para baixar.")
     except Exception as e:
-        st.error(f"Erro ao salvar estado: {str(e)}")
+        st.error(f"Erro ao preparar download: {str(e)}")
 
-def load_state(uploaded_file):
-    """Carrega um estado salvo anteriormente."""
+def load_state_from_upload(uploaded_file):
+    """Carrega um estado a partir de um arquivo carregado."""
     try:
         b64_data = uploaded_file.read()
         serialized = base64.b64decode(b64_data)
@@ -204,9 +244,15 @@ def load_state(uploaded_file):
         st.session_state.processed_files = state_data["processed_files"]
         st.session_state.combined_text = state_data["combined_text"]
         
+        # Salvar o estado carregado
+        save_state_to_file()
+        
         st.success("Estado restaurado com sucesso!")
     except Exception as e:
         st.error(f"Erro ao carregar estado: {str(e)}")
+
+# Carregar estado salvo ao iniciar o aplicativo
+load_state_from_file()
 
 # Interface principal
 def main():
@@ -216,14 +262,11 @@ def main():
     with st.sidebar:
         st.header("⚙️ Configurações")
         
-        # Configuração da API OpenAI
-        st.subheader("API OpenAI")
-        api_key = st.text_input("Chave da API OpenAI", 
-                               value=st.session_state.get("openai_api_key", ""),
-                               type="password")
-        
-        if api_key:
-            st.session_state.openai_api_key = api_key
+        # Alternar entre modo admin e usuário comum
+        admin_mode = st.checkbox("Modo Administrador", value=st.session_state.is_admin)
+        if admin_mode != st.session_state.is_admin:
+            st.session_state.is_admin = admin_mode
+            st.experimental_rerun()
         
         st.divider()
         
@@ -238,72 +281,74 @@ def main():
         
         st.divider()
         
-        # Gerenciamento de estado
-        st.subheader("💾 Gerenciamento de Estado")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Salvar Estado", use_container_width=True):
-                save_state()
-        
-        with col2:
-            if st.button("Resetar Sistema", use_container_width=True):
-                reset_system()
-        
-        state_file = st.file_uploader("Carregar Estado Salvo", type=["dat"])
-        if state_file is not None:
-            if st.button("Restaurar Estado"):
-                load_state(state_file)
-    
-    # Abas principais
-    tab1, tab2, tab3 = st.tabs(["📁 Upload de Documentos", "🔍 Consultar", "📋 Histórico"])
-    
-    # Aba de Upload
-    with tab1:
-        st.header("Upload de Documentos PDF")
-        st.write("Carregue um ou mais arquivos PDF para processamento.")
-        
-        uploaded_files = st.file_uploader("Escolha os arquivos PDF", 
-                                         type="pdf", 
-                                         accept_multiple_files=True)
-        
-        if uploaded_files:
-            for uploaded_file in uploaded_files:
-                if st.button(f"Processar '{uploaded_file.name}'"):
-                    process_pdf(uploaded_file)
-        
-        st.divider()
-        
-        # Exibir documentos processados
-        if st.session_state.pdf_contents:
-            st.subheader("Documentos Processados")
+        # Gerenciamento de estado (apenas para admin)
+        if st.session_state.is_admin:
+            st.subheader("💾 Gerenciamento de Estado")
             
-            for idx, (filename, content) in enumerate(st.session_state.pdf_contents.items()):
-                with st.expander(f"{idx+1}. {filename}"):
-                    st.text_area(
-                        "Amostra do texto extraído",
-                        content["text"][:1000] + "..." if len(content["text"]) > 1000 else content["text"],
-                        height=200
-                    )
-                    
-                    if st.button(f"Remover '{filename}'", key=f"remove_{idx}"):
-                        # Remover o documento
-                        file_hash = content["hash"]
-                        if file_hash in st.session_state.processed_files:
-                            st.session_state.processed_files.remove(file_hash)
-                        
-                        del st.session_state.pdf_contents[filename]
-                        update_combined_text()
-                        st.experimental_rerun()
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Salvar Estado", use_container_width=True):
+                    download_state()
+            
+            with col2:
+                if st.button("Resetar Sistema", use_container_width=True):
+                    reset_system()
+            
+            state_file = st.file_uploader("Carregar Estado Salvo", type=["dat"])
+            if state_file is not None:
+                if st.button("Restaurar Estado"):
+                    load_state_from_upload(state_file)
+    
+    # Modo Administrador
+    if st.session_state.is_admin:
+        admin_interface()
+    else:
+        # Modo Usuário Comum
+        user_interface()
+
+def admin_interface():
+    """Interface para administradores."""
+    st.header("🔧 Interface do Administrador")
+    st.write("Neste modo, você pode gerenciar os documentos disponíveis para consulta.")
+    
+    # Upload de documentos
+    st.subheader("📁 Upload de Documentos PDF")
+    st.write("Carregue um ou mais arquivos PDF para processamento.")
+    
+    uploaded_files = st.file_uploader("Escolha os arquivos PDF", 
+                                     type="pdf", 
+                                     accept_multiple_files=True)
+    
+    if uploaded_files:
+        for uploaded_file in uploaded_files:
+            if st.button(f"Processar '{uploaded_file.name}'"):
+                process_pdf(uploaded_file)
+    
+    # Exibir documentos processados
+    if st.session_state.pdf_contents:
+        st.subheader("📚 Documentos Processados")
+        
+        for idx, (filename, content) in enumerate(st.session_state.pdf_contents.items()):
+            with st.expander(f"{idx+1}. {filename}"):
+                st.text_area(
+                    "Amostra do texto extraído",
+                    content["text"][:1000] + "..." if len(content["text"]) > 1000 else content["text"],
+                    height=200
+                )
+
+def user_interface():
+    """Interface para usuários comuns."""
+    # Abas principais para usuários
+    tab1, tab2 = st.tabs(["🔍 Consultar", "📋 Histórico"])
     
     # Aba de Consulta
-    with tab2:
+    with tab1:
         st.header("Consultar Documentos")
         
         if not st.session_state.pdf_contents:
-            st.warning("Nenhum documento processado. Por favor, carregue e processe pelo menos um PDF.")
+            st.warning("Nenhum documento disponível. Por favor, aguarde até que um administrador adicione documentos ao sistema.")
         else:
-            st.write("Digite sua pergunta para consultar os documentos carregados.")
+            st.write("Digite sua pergunta para consultar os documentos disponíveis.")
             
             query = st.text_input("Sua pergunta:")
             
@@ -324,7 +369,7 @@ def main():
                         })
     
     # Aba de Histórico
-    with tab3:
+    with tab2:
         st.header("Histórico de Consultas")
         
         if not st.session_state.history:
