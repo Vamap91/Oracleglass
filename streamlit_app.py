@@ -34,9 +34,13 @@ if "is_admin" not in st.session_state:
     st.session_state.is_admin = False  # Modo do usuário (admin ou comum)
 
 # Obter a chave da API do OpenAI das secrets do Streamlit
-openai_api_key = st.secrets.get("openai", {}).get("api_key", "")
-if openai_api_key:
-    openai.api_key = openai_api_key
+try:
+    openai_api_key = st.secrets.get("openai", {}).get("api_key", "")
+    if openai_api_key:
+        openai.api_key = openai_api_key
+except Exception as e:
+    st.sidebar.warning("Chave da API OpenAI não configurada. Alguns recursos podem não funcionar.")
+    openai_api_key = ""
 
 # Funções utilitárias
 def get_file_hash(file_content):
@@ -294,6 +298,7 @@ def main():
                 if st.button("Resetar Sistema", use_container_width=True):
                     reset_system()
             
+            # Upload de arquivo de estado (.dat)
             state_file = st.file_uploader("Carregar Estado Salvo", type=["dat"])
             if state_file is not None:
                 if st.button("Restaurar Estado"):
@@ -315,10 +320,14 @@ def admin_interface():
     st.subheader("📁 Upload de Documentos PDF")
     st.write("Carregue um ou mais arquivos PDF para processamento.")
     
-    uploaded_files = st.file_uploader("Escolha os arquivos PDF", 
-                                     type="pdf", 
-                                     accept_multiple_files=True)
+    # Uploader para arquivos PDF apenas
+    uploaded_files = st.file_uploader(
+        "Escolha os arquivos PDF", 
+        type=["pdf"],  # Aceitar apenas PDF
+        accept_multiple_files=True
+    )
     
+    # Processar PDFs carregados
     if uploaded_files:
         for uploaded_file in uploaded_files:
             if st.button(f"Processar '{uploaded_file.name}'"):
