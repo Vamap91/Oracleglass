@@ -280,12 +280,17 @@ def main():
                 if st.button("Resetar Sistema", use_container_width=True):
                     reset_system()
             
-            # Upload de arquivo de estado (.dat) - definido explicitamente
+            # Uploader para arquivo de estado (.dat) - completamente separado
             st.write("Carregar Estado Salvo")
-            state_file = st.file_uploader("Envie um arquivo .dat de estado salvo", type=["dat"], key="state_upload")
-            if state_file is not None:
-                if st.button("Restaurar Estado"):
-                    load_state_from_upload(state_file)
+            state_uploader = st.file_uploader(
+                "Arquivo de Estado (.dat)",
+                type=["dat"],
+                key="estado_dat"
+            )
+            
+            if state_uploader is not None:
+                if st.button("Restaurar Estado", key="btn_restore"):
+                    load_state_from_upload(state_uploader)
     
     # Modo Administrador
     if st.session_state.is_admin:
@@ -303,77 +308,85 @@ def admin_interface():
     st.subheader("📁 Upload de Documentos PDF")
     st.write("Carregue um ou mais arquivos PDF para processamento.")
     
-    # Uploader para arquivos PDF apenas - com chave única para evitar conflitos
-    uploaded_files = st.file_uploader(
-        "Escolha os arquivos PDF", 
-        type=["pdf"],  # Aceitar apenas PDF
+    # Upload de PDFs com configurações completamente diferentes
+    pdf_uploader = st.file_uploader(
+        "Escolha os arquivos PDF",
+        type=["pdf"],
         accept_multiple_files=True,
-        key="pdf_upload"  # Chave única para este uploader
+        key="admin_pdf_uploader"
     )
     
     # Processar PDFs carregados
-    if uploaded_files:
-        for i, uploaded_file in enumerate(uploaded_files):
-            if st.button(f"Processar '{uploaded_file.name}'", key=f"process_{i}"):
-                process_pdf(uploaded_file)
+    if pdf_uploader:
+        for i, uploaded_file in enumerate(pdf_uploader):
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.write(f"Arquivo: {uploaded_file.name}")
+            with col2:
+                process_button = st.button(
+                    "Processar",
+                    key=f"btn_process_{i}_{uploaded_file.name.replace('.', '_')}"
+                )
+                if process_button:
+                    process_pdf(uploaded_file)
     
     # Exibir documentos processados
     if st.session_state.pdf_contents:
         st.subheader("📚 Documentos Processados")
         
         for idx, (filename, content) in enumerate(st.session_state.pdf_contents.items()):
-            with st.expander(f"{idx+1}. {filename}"):
+            with st.expander(f"{idx+1}. {filename}", key=f"doc_expander_{idx}"):
                 st.text_area(
                     "Amostra do texto extraído",
                     content["text"][:1000] + "..." if len(content["text"]) > 1000 else content["text"],
                     height=200,
-                    key=f"text_preview_{idx}"  # Chave única para cada área de texto
+                    key=f"text_preview_{idx}_{filename.replace('.', '_')}"
                 )
 
 def user_interface():
     """Interface para usuários comuns."""
-    # Abas principais para usuários
-    tab1, tab2 = st.tabs(["🔍 Consultar", "📋 Histórico"])
+    # Interface simplificada sem abas para maior clareza
+    st.header("🔍 Consultar Documentos")
     
-    # Aba de Consulta
-    with tab1:
-        st.header("Consultar Documentos")
+    if not st.session_state.pdf_contents:
+        st.warning("Nenhum documento disponível. Por favor, aguarde até que um administrador adicione documentos ao sistema.")
+    else:
+        st.write("Digite sua pergunta para consultar os documentos disponíveis.")
         
-        if not st.session_state.pdf_contents:
-            st.warning("Nenhum documento disponível. Por favor, aguarde até que um administrador adicione documentos ao sistema.")
-        else:
-            st.write("Digite sua pergunta para consultar os documentos disponíveis.")
-            
-            # Campo de consulta com chave única
-            query = st.text_input("Sua pergunta:", key="query_input")
-            
-            # Botão de consulta
-            if st.button("Consultar", key="query_button") and query:
-                with st.spinner("Processando consulta..."):
-                    answer = query_ai(query)
+        # Campo de consulta com chave única e identificação clara
+        query = st.text_input(
+            "❓ Sua pergunta sobre os documentos:",
+            key="query_text_input"
+        )
+        
+        # Botão de consulta destacado
+        if st.button("🔎 Enviar Consulta", key="send_query_button", use_container_width=True) and query:
+            with st.spinner("Processando sua consulta..."):
+                answer = query_ai(query)
+                
+                if answer:
+                    st.divider()
+                    st.subheader("📝 Resposta:")
+                    st.markdown(answer)
                     
-                    if answer:
-                        st.divider()
-                        st.subheader("Resposta:")
-                        st.write(answer)
-                        
-                        # Adicionar ao histórico
-                        st.session_state.history.append({
-                            "query": query,
-                            "answer": answer,
-                            "timestamp": time.strftime("%d/%m/%Y %H:%M:%S")
-                        })
-    
-    # Aba de Histórico
-    with tab2:
-        st.header("Histórico de Consultas")
+                    # Adicionar ao histórico
+                    st.session_state.history.append({
+                        "query": query,
+                        "answer": answer,
+                        "timestamp": time.strftime("%d/%m/%Y %H:%M:%S")
+                    })
         
-        if not st.session_state.history:
-            st.info("Nenhuma consulta realizada ainda.")
-        else:
+        # Mostrar o histórico diretamente abaixo
+        if st.session_state.history:
+            st.divider()
+            st.subheader("📋 Histórico de Consultas")
+            
             for idx, item in enumerate(reversed(st.session_state.history)):
-                with st.expander(f"{item['timestamp']} - {item['query']}", key=f"history_{idx}"):
-                    st.write(item['answer'])
+                with st.expander(
+                    f"{item['timestamp']} - {item['query']}",
+                    key=f"history_item_{idx}"
+                ):
+                    st.markdown(item['answer'])
 
 if __name__ == "__main__":
     main()
