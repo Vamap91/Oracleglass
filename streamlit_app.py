@@ -280,8 +280,9 @@ def main():
                 if st.button("Resetar Sistema", use_container_width=True):
                     reset_system()
             
-            # Upload de arquivo de estado (.dat)
-            state_file = st.file_uploader("Carregar Estado Salvo", type=["dat"])
+            # Upload de arquivo de estado (.dat) - definido explicitamente
+            st.write("Carregar Estado Salvo")
+            state_file = st.file_uploader("Envie um arquivo .dat de estado salvo", type=["dat"], key="state_upload")
             if state_file is not None:
                 if st.button("Restaurar Estado"):
                     load_state_from_upload(state_file)
@@ -302,17 +303,18 @@ def admin_interface():
     st.subheader("📁 Upload de Documentos PDF")
     st.write("Carregue um ou mais arquivos PDF para processamento.")
     
-    # Uploader para arquivos PDF apenas
+    # Uploader para arquivos PDF apenas - com chave única para evitar conflitos
     uploaded_files = st.file_uploader(
         "Escolha os arquivos PDF", 
         type=["pdf"],  # Aceitar apenas PDF
-        accept_multiple_files=True
+        accept_multiple_files=True,
+        key="pdf_upload"  # Chave única para este uploader
     )
     
     # Processar PDFs carregados
     if uploaded_files:
-        for uploaded_file in uploaded_files:
-            if st.button(f"Processar '{uploaded_file.name}'"):
+        for i, uploaded_file in enumerate(uploaded_files):
+            if st.button(f"Processar '{uploaded_file.name}'", key=f"process_{i}"):
                 process_pdf(uploaded_file)
     
     # Exibir documentos processados
@@ -324,7 +326,8 @@ def admin_interface():
                 st.text_area(
                     "Amostra do texto extraído",
                     content["text"][:1000] + "..." if len(content["text"]) > 1000 else content["text"],
-                    height=200
+                    height=200,
+                    key=f"text_preview_{idx}"  # Chave única para cada área de texto
                 )
 
 def user_interface():
@@ -341,9 +344,11 @@ def user_interface():
         else:
             st.write("Digite sua pergunta para consultar os documentos disponíveis.")
             
-            query = st.text_input("Sua pergunta:")
+            # Campo de consulta com chave única
+            query = st.text_input("Sua pergunta:", key="query_input")
             
-            if st.button("Consultar") and query:
+            # Botão de consulta
+            if st.button("Consultar", key="query_button") and query:
                 with st.spinner("Processando consulta..."):
                     answer = query_ai(query)
                     
@@ -367,7 +372,7 @@ def user_interface():
             st.info("Nenhuma consulta realizada ainda.")
         else:
             for idx, item in enumerate(reversed(st.session_state.history)):
-                with st.expander(f"{item['timestamp']} - {item['query']}"):
+                with st.expander(f"{item['timestamp']} - {item['query']}", key=f"history_{idx}"):
                     st.write(item['answer'])
 
 if __name__ == "__main__":
