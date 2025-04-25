@@ -1,17 +1,13 @@
 import streamlit as st
 import os
 import tempfile
-from pathlib import Path
-import fitz  # PyMuPDF
-import pytesseract
-from pdf2image import convert_from_path
-from PIL import Image
-import io
-import openai
+import base64
 import pickle
 import hashlib
 import time
-import base64
+import openai
+from io import BytesIO
+import pypdf  # Biblioteca mais simples para PDFs
 
 # Configuração da página
 st.set_page_config(
@@ -47,61 +43,52 @@ def get_file_hash(file_content):
     """Gera um hash único para o conteúdo do arquivo."""
     return hashlib.md5(file_content).hexdigest()
 
-def extract_text_from_pdf(pdf_path):
-    """Extrai texto de um PDF, usando OCR quando necessário."""
-    doc = fitz.open(pdf_path)
+def extract_text_from_pdf(pdf_bytes):
+    """Extrai texto de um PDF usando pypdf, uma biblioteca mais simples."""
     text_content = ""
-    total_pages = len(doc)
-    
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    for page_num in range(total_pages):
-        page = doc.load_page(page_num)
-        text = page.get_text()
+    try:
+        # Criar um arquivo temporário em memória
+        pdf_file = BytesIO(pdf_bytes)
         
-        # Se o texto extraído for muito curto, aplicar OCR
-        if len(text.strip()) < 100:
-            status_text.text(f"Aplicando OCR na página {page_num+1}/{total_pages}...")
-            
-            # Converter a página para imagem
-            pix = page.get_pixmap()
-            img_bytes = pix.tobytes("png")
-            img = Image.open(io.BytesIO(img_bytes))
-            
-            # Usar OCR para extrair texto
-            text = pytesseract.image_to_string(img, lang='por')
+        # Usar pypdf para extrair texto
+        reader = pypdf.PdfReader(pdf_file)
+        total_pages = len(reader.pages)
         
-        text_content += f"\n--- Página {page_num+1} ---\n{text}"
-        progress_bar.progress((page_num + 1) / total_pages)
-        status_text.text(f"Processando página {page_num+1}/{total_pages}")
-    
-    progress_bar.empty()
-    status_text.empty()
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        for page_num, page in enumerate(reader.pages):
+            # Extrair texto da página
+            page_text = page.extract_text() or ""
+            
+            # Adicionar ao conteúdo total
+            text_content += f"\n--- Página {page_num+1} ---\n{page_text}"
+            
+            # Atualizar progresso
+            progress_bar.progress((page_num + 1) / total_pages)
+            status_text.text(f"Processando página {page_num+1}/{total_pages}")
+        
+        progress_bar.empty()
+        status_text.empty()
+        
+    except Exception as e:
+        st.error(f"Erro ao extrair texto do PDF: {str(e)}")
     
     return text_content
 
-def save_uploaded_file(uploaded_file):
-    """Salva o arquivo carregado em um diretório temporário."""
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-        tmp_file.write(uploaded_file.getvalue())
-        return tmp_file.name
-
 def process_pdf(uploaded_file):
     """Processa um arquivo PDF carregado."""
-    file_hash = get_file_hash(uploaded_file.getvalue())
+    file_bytes = uploaded_file.getvalue()
+    file_hash = get_file_hash(file_bytes)
     
     # Verificar se o arquivo já foi processado
     if file_hash in st.session_state.processed_files:
         st.info(f"O arquivo '{uploaded_file.name}' já foi processado.")
         return
     
-    # Salvar e processar o arquivo
-    temp_path = save_uploaded_file(uploaded_file)
-    
     with st.spinner(f"Processando '{uploaded_file.name}'..."):
         try:
-            text_content = extract_text_from_pdf(temp_path)
+            text_content = extract_text_from_pdf(file_bytes)
             
             # Armazenar o conteúdo extraído
             st.session_state.pdf_contents[uploaded_file.name] = {
@@ -121,12 +108,6 @@ def process_pdf(uploaded_file):
             st.success(f"Arquivo '{uploaded_file.name}' processado com sucesso!")
         except Exception as e:
             st.error(f"Erro ao processar o arquivo: {str(e)}")
-        finally:
-            # Remover o arquivo temporário
-            try:
-                os.unlink(temp_path)
-            except:
-                pass
 
 def update_combined_text():
     """Atualiza o texto combinado de todos os PDFs processados."""
