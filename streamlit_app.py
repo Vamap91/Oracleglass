@@ -1,8 +1,7 @@
 import streamlit as st
 import os
-import openai
-from io import BytesIO
 import pypdf
+from io import BytesIO
 
 # Configuração da página
 st.set_page_config(
@@ -22,7 +21,6 @@ if "pdf_text" not in st.session_state:
 if "history" not in st.session_state:
     st.session_state.history = []
 
-# Funções de validação
 def validate_environment():
     """Valida todo o ambiente necessário para funcionamento do sistema"""
     global VALIDATION_OK, VALIDATION_MESSAGES
@@ -31,18 +29,12 @@ def validate_environment():
     VALIDATION_OK = True
     VALIDATION_MESSAGES = {}
     
-    # 1. Validar chave OpenAI - Acesso direto à chave OPENAI_API_KEY
+    # 1. Validar chave OpenAI - Verificação mais segura
     try:
-        api_key = None
-        if 'OPENAI_API_KEY' in st.secrets:
-            api_key = st.secrets['OPENAI_API_KEY']
-            
-        if not api_key:
-            VALIDATION_OK = False
-            VALIDATION_MESSAGES["openai_key"] = "Chave API não encontrada. Verifique o arquivo secrets.toml."
-        else:
-            openai.api_key = api_key
-            VALIDATION_MESSAGES["openai_key"] = "OK"
+        import openai
+        # Definir API key explicitamente antes de verificar
+        openai.api_key = st.secrets["OPENAI_API_KEY"]
+        VALIDATION_MESSAGES["openai_key"] = "OK"
     except Exception as e:
         VALIDATION_OK = False
         VALIDATION_MESSAGES["openai_key"] = f"Erro ao verificar API key: {str(e)}"
@@ -98,6 +90,11 @@ def extract_text_from_pdf(pdf_path):
 def query_ai(query):
     """Processa uma consulta usando a API da OpenAI"""
     try:
+        # Importar OpenAI dentro da função para evitar erros de escopo
+        import openai
+        # Definir API key dentro da função
+        openai.api_key = st.secrets["OPENAI_API_KEY"]
+        
         context = st.session_state.pdf_text[:7500]  # Limitação de contexto
         
         response = openai.ChatCompletion.create(
@@ -147,11 +144,6 @@ with st.sidebar:
         st.subheader("📄 Informações do PDF")
         st.write(f"Arquivo: {os.path.basename(PDF_PATH)}")
         st.write(f"Tamanho do texto: {len(st.session_state.pdf_text)} caracteres")
-    
-    # Botão para revalidar - REMOVIDA a função rerun
-    if st.button("🔄 Revalidar Sistema"):
-        validate_environment()
-        # REMOVIDO: st.rerun() ou st.experimental_rerun()
 
 # Interface principal
 if not VALIDATION_OK:
