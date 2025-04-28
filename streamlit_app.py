@@ -122,13 +122,29 @@ def query_ai(query):
         st.error(f"Erro ao processar consulta: {str(e)}")
         return None
 
-# Função para criar PDF de exportação
-def create_download_link(df, filename):
-    """Gera link para download do histórico em formato CSV"""
-    csv = df.to_csv(index=False)
-    b64 = base64.b64encode(csv.encode()).decode()
-    href = f'<a href="data:file/csv;base64,{b64}" download="{filename}">Download do arquivo CSV</a>'
-    return href
+def export_to_csv():
+    """Exporta o histórico para CSV"""
+    if not st.session_state.history:
+        st.warning("Não há consultas para exportar.")
+        return None
+    
+    # Criar DataFrame com o histórico
+    data = []
+    for item in st.session_state.history:
+        data.append({
+            "Data e Hora": item.get("timestamp", ""),
+            "Pergunta": item.get("query", ""),
+            "Resposta": item.get("answer", ""),
+            "Modelo": item.get("model", "")
+        })
+    
+    df = pd.DataFrame(data)
+    csv = df.to_csv(index=False).encode('utf-8')
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"oraculo_historico_{timestamp}.csv"
+    
+    return csv, filename
 
 # Validar ambiente na inicialização
 validate_environment()
@@ -166,6 +182,7 @@ with st.sidebar:
         # Configurações de modelo
         st.divider()
         st.subheader("⚙️ Configurações")
+        
         model = st.selectbox(
             "Modelo OpenAI:",
             options=["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"],
@@ -179,28 +196,19 @@ with st.sidebar:
             st.info(f"Modelo alterado para {model}")
         
         # Botão para exportar histórico
-        if st.session_state.history:
-            st.divider()
-            st.subheader("📊 Exportar Histórico")
-            
-            if st.button("📥 Exportar Consultas"):
-                # Criar DataFrame com o histórico
-                data = []
-                for item in st.session_state.history:
-                    data.append({
-                        "Data e Hora": item.get("timestamp", ""),
-                        "Pergunta": item.get("query", ""),
-                        "Resposta": item.get("answer", ""),
-                        "Modelo": item.get("model", "")
-                    })
-                
-                df = pd.DataFrame(data)
-                
-                # Gerar link de download
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                csv_filename = f"oraculo_historico_{timestamp}.csv"
-                
-                st.markdown(create_download_link(df, csv_filename), unsafe_allow_html=True)
+        st.divider()
+        st.subheader("📊 Exportar Histórico")
+        
+        export_button = st.button("📥 Exportar Consultas para CSV")
+        if export_button:
+            csv_data, filename = export_to_csv()
+            if csv_data is not None:
+                st.download_button(
+                    label="⬇️ Baixar CSV",
+                    data=csv_data,
+                    file_name=filename,
+                    mime="text/csv",
+                )
 
 # Interface principal
 if not VALIDATION_OK:
@@ -229,15 +237,14 @@ else:
                     "timestamp": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
                 })
     
-    # Histórico de consultas - CORRIGIDO para evitar o erro
+    # Histórico de consultas
     if st.session_state.history:
         st.divider()
         st.subheader("📋 Histórico de Consultas")
         
-        for idx, item in enumerate(reversed(st.session_state.history)):
-            # Usando string fixa para chave para evitar o erro
-            with st.expander(f"Pergunta ({idx+1}): {item.get('query', 'N/A')}"):
-                st.markdown(f"**Data e Hora:** {item.get('timestamp', 'N/A')}")
-                st.markdown(f"**Modelo:** {item.get('model', 'N/A')}")
+        for i, item in enumerate(reversed(st.session_state.history)):
+            with st.expander(f"Pergunta ({i+1}): {item.get('query', '')}"):
+                st.markdown(f"**Data e Hora:** {item.get('timestamp', '')}")
+                st.markdown(f"**Modelo:** {item.get('model', '')}")
                 st.markdown("**Resposta:**")
-                st.markdown(item.get("answer", "Sem resposta"))
+                st.markdown(item.get('answer', ''))
