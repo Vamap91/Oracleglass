@@ -31,9 +31,12 @@ def validate_environment():
     VALIDATION_OK = True
     VALIDATION_MESSAGES = {}
     
-    # 1. Validar chave OpenAI
+    # 1. Validar chave OpenAI - Acesso direto à chave OPENAI_API_KEY
     try:
-        api_key = st.secrets.get("openai", {}).get("api_key", "")
+        api_key = None
+        if 'OPENAI_API_KEY' in st.secrets:
+            api_key = st.secrets['OPENAI_API_KEY']
+            
         if not api_key:
             VALIDATION_OK = False
             VALIDATION_MESSAGES["openai_key"] = "Chave API não encontrada. Verifique o arquivo secrets.toml."
@@ -145,10 +148,10 @@ with st.sidebar:
         st.write(f"Arquivo: {os.path.basename(PDF_PATH)}")
         st.write(f"Tamanho do texto: {len(st.session_state.pdf_text)} caracteres")
     
-    # Botão para revalidar
+    # Botão para revalidar - REMOVIDA a função rerun
     if st.button("🔄 Revalidar Sistema"):
         validate_environment()
-        st.experimental_rerun()
+        # REMOVIDO: st.rerun() ou st.experimental_rerun()
 
 # Interface principal
 if not VALIDATION_OK:
