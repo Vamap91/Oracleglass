@@ -10,8 +10,8 @@ st.set_page_config(
     layout="wide"
 )
 
-# Variáveis globais
-PDF_PATH = "data/guia_rapido.pdf"
+# Variáveis globais - NOME CORRIGIDO DO ARQUIVO
+PDF_PATH = "data/Guia Rápido.pdf"  # Corrigido para o nome exato com maiúsculas e espaço
 VALIDATION_OK = True
 VALIDATION_MESSAGES = {}
 
