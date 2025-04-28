@@ -6,12 +6,12 @@ from io import BytesIO
 # Configuração da página
 st.set_page_config(
     page_title="Oráculo - Sistema de Consulta Inteligente",
-    page_icon="🔮",
+    page_icon="🚗",  # Ícone de carro em vez de bola de cristal
     layout="wide"
 )
 
-# Variáveis globais - NOME CORRIGIDO DO ARQUIVO
-PDF_PATH = "data/Guia Rápido.pdf"  # Corrigido para o nome exato com maiúsculas e espaço
+# Variáveis globais
+PDF_PATH = "data/Guia Rápido.pdf"
 VALIDATION_OK = True
 VALIDATION_MESSAGES = {}
 
@@ -20,6 +20,8 @@ if "pdf_text" not in st.session_state:
     st.session_state.pdf_text = ""
 if "history" not in st.session_state:
     st.session_state.history = []
+if "model" not in st.session_state:
+    st.session_state.model = "gpt-3.5-turbo"  # Modelo padrão mais econômico
 
 def validate_environment():
     """Valida todo o ambiente necessário para funcionamento do sistema"""
@@ -88,26 +90,30 @@ def extract_text_from_pdf(pdf_path):
     return text_content
 
 def query_ai(query):
-    """Processa uma consulta usando a API da OpenAI"""
+    """Processa uma consulta usando a API da OpenAI - Compatível com versão 1.0+"""
     try:
         # Importar OpenAI dentro da função para evitar erros de escopo
         import openai
-        # Definir API key dentro da função
-        openai.api_key = st.secrets["OPENAI_API_KEY"]
         
-        context = st.session_state.pdf_text[:7500]  # Limitação de contexto
+        # Cliente OpenAI para v1.0+
+        client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
         
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
+        # Limitar o contexto para reduzir custos
+        max_length = 3500 if st.session_state.model == "gpt-3.5-turbo" else 7000
+        context = st.session_state.pdf_text[:max_length]
+        
+        # Chamada da API atualizada para v1.0+
+        response = client.chat.completions.create(
+            model=st.session_state.model,
             messages=[
-                {"role": "system", "content": "Você é um assistente especializado que responde perguntas baseado apenas no conteúdo do documento fornecido. Se a informação não estiver no documento, informe isso claramente."},
+                {"role": "system", "content": "Você é um assistente especializado em carros e veículos. Responda perguntas baseado apenas no conteúdo do documento fornecido. Se a informação não estiver no documento, informe isso claramente."},
                 {"role": "user", "content": f"Com base no documento a seguir, responda à pergunta: '{query}'\n\nConteúdo do documento:\n{context}"}
             ],
             temperature=0.3,
-            max_tokens=1000
+            max_tokens=800  # Reduzido para economizar tokens
         )
         
-        return response.choices[0].message["content"]
+        return response.choices[0].message.content
     except Exception as e:
         st.error(f"Erro ao processar consulta: {str(e)}")
         return None
@@ -116,9 +122,9 @@ def query_ai(query):
 validate_environment()
 
 # Interface principal
-st.title("🔮 Oráculo - Sistema de Consulta Inteligente")
+st.title("🚗 Oráculo - Sistema de Consulta Inteligente")
 
-# Barra lateral com validações
+# Barra lateral com validações e configurações
 with st.sidebar:
     st.header("⚙️ Validação do Sistema")
     
@@ -144,12 +150,27 @@ with st.sidebar:
         st.subheader("📄 Informações do PDF")
         st.write(f"Arquivo: {os.path.basename(PDF_PATH)}")
         st.write(f"Tamanho do texto: {len(st.session_state.pdf_text)} caracteres")
+        
+        # Configurações de modelo
+        st.divider()
+        st.subheader("⚙️ Configurações")
+        model = st.selectbox(
+            "Modelo OpenAI:",
+            options=["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"],
+            index=0,  # Default para o modelo mais econômico
+            help="Selecione o modelo da OpenAI. GPT-3.5 é mais rápido e econômico, GPT-4 é mais preciso."
+        )
+        
+        # Atualizar o modelo selecionado
+        if model != st.session_state.model:
+            st.session_state.model = model
+            st.info(f"Modelo alterado para {model}")
 
 # Interface principal
 if not VALIDATION_OK:
     st.error("⚠️ Há problemas com a configuração do sistema. Verifique os detalhes na barra lateral.")
 else:
-    st.write("Digite sua pergunta sobre o documento e clique em 'Consultar'.")
+    st.write("Digite sua pergunta sobre veículos e clique em 'Consultar'.")
     
     # Campo de consulta
     query = st.text_input("❓ Sua pergunta:", key="query_input")
@@ -167,7 +188,8 @@ else:
                 # Adicionar ao histórico
                 st.session_state.history.append({
                     "query": query,
-                    "answer": answer
+                    "answer": answer,
+                    "model": st.session_state.model
                 })
     
     # Histórico de consultas
@@ -176,5 +198,5 @@ else:
         st.subheader("📋 Histórico de Consultas")
         
         for idx, item in enumerate(reversed(st.session_state.history)):
-            with st.expander(f"Pergunta: {item['query']}", key=f"hist_{idx}"):
+            with st.expander(f"Pergunta: {item['query']} ({item['model']})", key=f"hist_{idx}"):
                 st.markdown(item["answer"])
