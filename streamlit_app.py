@@ -2,11 +2,15 @@ import streamlit as st
 import os
 import pypdf
 from io import BytesIO
+import time
+from datetime import datetime
+import base64
+import pandas as pd
 
 # Configuração da página
 st.set_page_config(
     page_title="Oráculo - Sistema de Consulta Inteligente",
-    page_icon="🚗",  # Ícone de carro em vez de bola de cristal
+    page_icon="🚗",
     layout="wide"
 )
 
@@ -118,6 +122,14 @@ def query_ai(query):
         st.error(f"Erro ao processar consulta: {str(e)}")
         return None
 
+# Função para criar PDF de exportação
+def create_download_link(df, filename):
+    """Gera link para download do histórico em formato CSV"""
+    csv = df.to_csv(index=False)
+    b64 = base64.b64encode(csv.encode()).decode()
+    href = f'<a href="data:file/csv;base64,{b64}" download="{filename}">Download do arquivo CSV</a>'
+    return href
+
 # Validar ambiente na inicialização
 validate_environment()
 
@@ -165,6 +177,30 @@ with st.sidebar:
         if model != st.session_state.model:
             st.session_state.model = model
             st.info(f"Modelo alterado para {model}")
+        
+        # Botão para exportar histórico
+        if st.session_state.history:
+            st.divider()
+            st.subheader("📊 Exportar Histórico")
+            
+            if st.button("📥 Exportar Consultas"):
+                # Criar DataFrame com o histórico
+                data = []
+                for item in st.session_state.history:
+                    data.append({
+                        "Data e Hora": item.get("timestamp", ""),
+                        "Pergunta": item.get("query", ""),
+                        "Resposta": item.get("answer", ""),
+                        "Modelo": item.get("model", "")
+                    })
+                
+                df = pd.DataFrame(data)
+                
+                # Gerar link de download
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                csv_filename = f"oraculo_historico_{timestamp}.csv"
+                
+                st.markdown(create_download_link(df, csv_filename), unsafe_allow_html=True)
 
 # Interface principal
 if not VALIDATION_OK:
@@ -185,18 +221,23 @@ else:
                 st.subheader("📝 Resposta:")
                 st.markdown(answer)
                 
-                # Adicionar ao histórico
+                # Adicionar ao histórico com timestamp
                 st.session_state.history.append({
                     "query": query,
                     "answer": answer,
-                    "model": st.session_state.model
+                    "model": st.session_state.model,
+                    "timestamp": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
                 })
     
-    # Histórico de consultas
+    # Histórico de consultas - CORRIGIDO para evitar o erro
     if st.session_state.history:
         st.divider()
         st.subheader("📋 Histórico de Consultas")
         
         for idx, item in enumerate(reversed(st.session_state.history)):
-            with st.expander(f"Pergunta: {item['query']} ({item['model']})", key=f"hist_{idx}"):
-                st.markdown(item["answer"])
+            # Usando string fixa para chave para evitar o erro
+            with st.expander(f"Pergunta ({idx+1}): {item.get('query', 'N/A')}"):
+                st.markdown(f"**Data e Hora:** {item.get('timestamp', 'N/A')}")
+                st.markdown(f"**Modelo:** {item.get('model', 'N/A')}")
+                st.markdown("**Resposta:**")
+                st.markdown(item.get("answer", "Sem resposta"))
