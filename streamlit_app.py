@@ -89,7 +89,7 @@ def extract_text_from_pdf(pdf_path):
         # Iterar por todas as páginas
         for page_num, page in enumerate(reader.pages):
             # Extrair o texto com configurações para preservar layout
-            page_text = page.extract_text(space_width=1) or ""
+            page_text = page.extract_text() or ""
             
             # Adicionar número da página e texto
             text_content += f"\n--- Página {page_num+1} ---\n{page_text}\n"
@@ -163,7 +163,7 @@ def export_to_csv():
     """Exporta o histórico para CSV"""
     if not st.session_state.history:
         st.warning("Não há consultas para exportar.")
-        return None
+        return None, None
     
     # Criar DataFrame com o histórico
     data = []
@@ -239,3 +239,62 @@ with st.sidebar:
         if model != st.session_state.model:
             st.session_state.model = model
             st.info(f"Modelo alterado para {model}")
+        
+        # Botão para exportar histórico
+        st.divider()
+        st.subheader("📊 Exportar Histórico")
+        
+        export_button = st.button("📥 Exportar Consultas para CSV")
+        if export_button:
+            csv_data, filename = export_to_csv()
+            if csv_data is not None and filename is not None:
+                st.download_button(
+                    label="⬇️ Baixar CSV",
+                    data=csv_data,
+                    file_name=filename,
+                    mime="text/csv",
+                )
+        
+        # Modo de depuração para visualizar o texto extraído
+        st.divider()
+        st.subheader("🔍 Depuração")
+        if st.button("Visualizar Texto Extraído"):
+            show_extracted_text()
+
+# Conteúdo principal - Sempre exibir, independente da validação
+st.write("Digite sua pergunta sobre veículos e clique em 'Consultar'.")
+
+# Campo de consulta
+query = st.text_input("❓ Sua pergunta:", key="query_input")
+
+# Botão de consulta
+consult_button = st.button("🔍 Consultar", key="query_button", disabled=not VALIDATION_OK)
+if consult_button and query:
+    with st.spinner("Processando consulta..."):
+        answer = query_ai(query)
+        
+        if answer:
+            st.divider()
+            st.subheader("📝 Resposta:")
+            st.markdown(answer)
+            
+            # Adicionar ao histórico com timestamp
+            st.session_state.history.append({
+                "query": query,
+                "answer": answer,
+                "model": st.session_state.model,
+                "timestamp": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+            })
+
+# Histórico de consultas - sempre mostrar se houver itens
+if st.session_state.history:
+    st.divider()
+    st.subheader("📋 Histórico de Consultas")
+    
+    for i, item in enumerate(reversed(st.session_state.history)):
+        question = item.get("query", "")
+        with st.expander(f"Pergunta ({i+1}): {question}"):
+            st.markdown(f"**Data e Hora:** {item.get('timestamp', '')}")
+            st.markdown(f"**Modelo:** {item.get('model', '')}")
+            st.markdown("**Resposta:**")
+            st.markdown(item.get('answer', ''))
