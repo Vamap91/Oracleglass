@@ -80,14 +80,35 @@ def validate_environment():
     return VALIDATION_OK
 
 def extract_text_from_pdf(pdf_path):
-    """Extrai texto de um arquivo PDF"""
+    """Extrai texto de um arquivo PDF com método melhorado para preservar estrutura"""
     text_content = ""
     try:
         # Abrir o arquivo PDF
         reader = pypdf.PdfReader(pdf_path)
-        for page in reader.pages:
-            page_text = page.extract_text() or ""
-            text_content += page_text + "\n"
+        
+        # Iterar por todas as páginas
+        for page_num, page in enumerate(reader.pages):
+            # Extrair o texto com configurações para preservar layout
+            page_text = page.extract_text(space_width=1) or ""
+            
+            # Adicionar número da página e texto
+            text_content += f"\n--- Página {page_num+1} ---\n{page_text}\n"
+            
+            # Tentar extrair tabelas e conteúdo estruturado (abordagem simples)
+            lines = page_text.split('\n')
+            for i, line in enumerate(lines):
+                # Detectar possíveis números de telefone
+                if ('0800' in line or '4004' in line or 
+                    'telefone' in line.lower() or 'contato' in line.lower() or
+                    '-' in line and any(c.isdigit() for c in line)):
+                    # Adicionar linhas ao redor para contexto
+                    start_idx = max(0, i-2)
+                    end_idx = min(len(lines), i+3)
+                    context_lines = lines[start_idx:end_idx]
+                    text_content += "\n--- INFORMAÇÃO DE CONTATO DETECTADA ---\n"
+                    text_content += "\n".join(context_lines) + "\n"
+                    text_content += "--- FIM DA INFORMAÇÃO DE CONTATO ---\n"
+    
     except Exception as e:
         st.error(f"Erro ao processar PDF: {str(e)}")
     
@@ -102,19 +123,35 @@ def query_ai(query):
         # Cliente OpenAI para v1.0+
         client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
         
-        # Limitar o contexto para reduzir custos
-        max_length = 3500 if st.session_state.model == "gpt-3.5-turbo" else 7000
+        # Limitar o contexto para reduzir custos, mas aumentar para consultas específicas
+        # Aumentar limite para consultas sobre contatos/telefone
+        max_length = 10000  # Aumentado para capturar mais conteúdo
+        if any(termo in query.lower() for termo in ['telefone', 'contato', 'azul', 'seguro', 'número']):
+            max_length = 15000  # Aumentar ainda mais para consultas sobre contatos
+        
         context = st.session_state.pdf_text[:max_length]
+        
+        # Instrução mais específica para o modelo
+        system_prompt = """
+        Você é um assistente especializado em fornecer informações sobre veículos e serviços automotivos.
+        
+        IMPORTANTE:
+        1. Responda apenas com base nas informações disponíveis no documento fornecido.
+        2. Procure cuidadosamente por números de telefone, especialmente sequências como 0800, 4004, etc.
+        3. Se alguma informação parecer incompleta no documento, mencione isso na resposta.
+        4. Para consultas sobre contatos, verifique todas as seções do documento, não apenas os títulos.
+        5. Se a informação não estiver presente, informe claramente.
+        """
         
         # Chamada da API atualizada para v1.0+
         response = client.chat.completions.create(
             model=st.session_state.model,
             messages=[
-                {"role": "system", "content": "Você é um assistente especializado em carros e veículos. Responda perguntas baseado apenas no conteúdo do documento fornecido. Se a informação não estiver no documento, informe isso claramente."},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Com base no documento a seguir, responda à pergunta: '{query}'\n\nConteúdo do documento:\n{context}"}
             ],
-            temperature=0.3,
-            max_tokens=800  # Reduzido para economizar tokens
+            temperature=0.2,  # Reduzido para maior precisão factual
+            max_tokens=800
         )
         
         return response.choices[0].message.content
@@ -145,6 +182,14 @@ def export_to_csv():
     filename = f"oraculo_historico_{timestamp}.csv"
     
     return csv, filename
+
+# Visualizar texto extraído no modo de depuração
+def show_extracted_text():
+    """Exibe o texto extraído para depuração"""
+    if st.session_state.pdf_text:
+        st.text_area("Texto Extraído do PDF", st.session_state.pdf_text, height=400)
+    else:
+        st.warning("Nenhum texto extraído ainda.")
 
 # Validar ambiente na inicialização
 validate_environment()
@@ -194,57 +239,3 @@ with st.sidebar:
         if model != st.session_state.model:
             st.session_state.model = model
             st.info(f"Modelo alterado para {model}")
-        
-        # Botão para exportar histórico
-        st.divider()
-        st.subheader("📊 Exportar Histórico")
-        
-        export_button = st.button("📥 Exportar Consultas para CSV")
-        if export_button:
-            csv_data, filename = export_to_csv()
-            if csv_data is not None:
-                st.download_button(
-                    label="⬇️ Baixar CSV",
-                    data=csv_data,
-                    file_name=filename,
-                    mime="text/csv",
-                )
-
-# Interface principal
-if not VALIDATION_OK:
-    st.error("⚠️ Há problemas com a configuração do sistema. Verifique os detalhes na barra lateral.")
-else:
-    st.write("Digite sua pergunta sobre veículos e clique em 'Consultar'.")
-    
-    # Campo de consulta
-    query = st.text_input("❓ Sua pergunta:", key="query_input")
-    
-    # Botão de consulta
-    if st.button("🔍 Consultar", key="query_button") and query:
-        with st.spinner("Processando consulta..."):
-            answer = query_ai(query)
-            
-            if answer:
-                st.divider()
-                st.subheader("📝 Resposta:")
-                st.markdown(answer)
-                
-                # Adicionar ao histórico com timestamp
-                st.session_state.history.append({
-                    "query": query,
-                    "answer": answer,
-                    "model": st.session_state.model,
-                    "timestamp": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-                })
-    
-    # Histórico de consultas
-    if st.session_state.history:
-        st.divider()
-        st.subheader("📋 Histórico de Consultas")
-        
-        for i, item in enumerate(reversed(st.session_state.history)):
-            with st.expander(f"Pergunta ({i+1}): {item.get('query', '')}"):
-                st.markdown(f"**Data e Hora:** {item.get('timestamp', '')}")
-                st.markdown(f"**Modelo:** {item.get('model', '')}")
-                st.markdown("**Resposta:**")
-                st.markdown(item.get('answer', ''))
