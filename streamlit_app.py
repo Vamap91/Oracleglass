@@ -115,7 +115,9 @@ def extract_text_from_pdf(pdf_path):
     return text_content
 
 def query_ai(query):
-    """Processa uma consulta usando a API da OpenAI - Compatível com versão 1.0+"""
+    """Processa uma consulta usando a API da OpenAI - Compatível com versão 1.0+
+       Modificado para enviar o contexto completo do PDF.
+    """
     try:
         # Importar OpenAI dentro da função para evitar erros de escopo
         import openai
@@ -123,41 +125,129 @@ def query_ai(query):
         # Cliente OpenAI para v1.0+
         client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
         
-        # Limitar o contexto para reduzir custos, mas aumentar para consultas específicas
-        # Aumentar limite para consultas sobre contatos/telefone
-        max_length = 10000  # Aumentado para capturar mais conteúdo
-        if any(termo in query.lower() for termo in ['telefone', 'contato', 'azul', 'seguro', 'número']):
-            max_length = 15000  # Aumentar ainda mais para consultas sobre contatos
+        # *** MODIFICAÇÃO PRINCIPAL: Remover a limitação de 'max_length' ***
+        # O contexto agora será o texto completo extraído do PDF.
+        context = st.session_state.pdf_text 
         
-        context = st.session_state.pdf_text[:max_length]
-        
-        # Instrução mais específica para o modelo
+        # Instrução do sistema refinada para melhor processamento de termos específicos
         system_prompt = """
-        Você é um assistente especializado em fornecer informações sobre veículos e serviços automotivos.
+        Você é um assistente de IA especializado em analisar o conteúdo de um documento PDF fornecido e responder perguntas exclusivamente com base nesse conteúdo.
         
-        IMPORTANTE:
-        1. Responda apenas com base nas informações disponíveis no documento fornecido.
-        2. Procure cuidadosamente por números de telefone, especialmente sequências como 0800, 4004, etc.
-        3. Se alguma informação parecer incompleta no documento, mencione isso na resposta.
-        4. Para consultas sobre contatos, verifique todas as seções do documento, não apenas os títulos.
-        5. Se a informação não estiver presente, informe claramente.
+        Instruções Importantes:
+        1. Sua resposta DEVE ser estritamente baseada nas informações contidas no texto do documento fornecido.
+        2. NÃO utilize conhecimento externo ou informações que não estejam presentes no documento.
+        3. Se a pergunta se referir a um tópico ou termo específico (ex: 'undercar', 'telefone', '0800'), procure cuidadosamente por todas as menções desse tópico no documento completo antes de responder.
+        4. Se a informação solicitada estiver presente, forneça-a de forma clara e cite a parte relevante do texto, se possível.
+        5. Se a informação solicitada NÃO estiver presente no documento, declare explicitamente que a informação não foi encontrada no documento fornecido.
+        6. Se partes do documento parecerem incompletas ou ambíguas em relação à pergunta, mencione isso.
         """
         
         # Chamada da API atualizada para v1.0+
         response = client.chat.completions.create(
-            model=st.session_state.model,
+            model=st.session_state.model, # Usa o modelo selecionado na interface
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Com base no documento a seguir, responda à pergunta: '{query}'\n\nConteúdo do documento:\n{context}"}
+                # Envia o contexto completo
+                {"role": "user", "content": f"Com base EXCLUSIVAMENTE no seguinte documento, responda à pergunta: '{query}'\n\nConteúdo Completo do Documento:\n{context}"}
             ],
-            temperature=0.2,  # Reduzido para maior precisão factual
-            max_tokens=800
+            temperature=0.2,  # Manter baixo para respostas factuais baseadas no texto
+            max_tokens=1000 # Aumentar ligeiramente caso a resposta precise ser mais longa
         )
         
         return response.choices[0].message.content
+    
+    except openai.BadRequestError as e:
+        # Capturar erro específico de contexto muito longo
+        if "context_length_exceeded" in str(e):
+            st.error(f"Erro: O documento é muito longo para o modelo selecionado ('{st.session_state.model}'). Tente selecionar um modelo com maior capacidade de contexto (ex: gpt-4-turbo, gpt-4o) ou reduza o tamanho do PDF.")
+            return "Erro: O documento excede a capacidade de processamento do modelo selecionado."
+        else:
+            st.error(f"Erro na API OpenAI: {str(e)}")
+            return f"Ocorreu um erro ao processar sua consulta com a OpenAI: {str(e)}"
+            
     except Exception as e:
-        st.error(f"Erro ao processar consulta: {str(e)}")
-        return None
+        st.error(f"Erro inesperado ao processar consulta: {str(e)}")
+        return f"Ocorreu um erro inesperado: {str(e)}"
+
+# Função auxiliar para verificar a presença de termos específicos no texto extraído
+def verificar_termos_no_pdf(termos, texto_pdf=None):
+    """
+    Verifica se determinados termos estão presentes no texto do PDF
+    e retorna suas posições no texto.
+    
+    Args:
+        termos (list): Lista de termos a serem verificados
+        texto_pdf (str, optional): Texto do PDF. Se None, usa st.session_state.pdf_text
+        
+    Returns:
+        dict: Dicionário com os termos encontrados e suas posições
+    """
+    if texto_pdf is None:
+        if "pdf_text" not in st.session_state:
+            return {"erro": "Texto do PDF não disponível"}
+        texto_pdf = st.session_state.pdf_text
+    
+    resultados = {}
+    
+    for termo in termos:
+        termo = termo.lower()
+        posicoes = []
+        texto_lower = texto_pdf.lower()
+        
+        # Encontrar todas as ocorrências
+        pos = texto_lower.find(termo)
+        while pos != -1:
+            # Adicionar contexto (50 caracteres antes e depois)
+            inicio = max(0, pos - 50)
+            fim = min(len(texto_pdf), pos + len(termo) + 50)
+            contexto = texto_pdf[inicio:fim]
+            
+            posicoes.append({
+                "posicao": pos,
+                "contexto": contexto
+            })
+            
+            # Procurar próxima ocorrência
+            pos = texto_lower.find(termo, pos + 1)
+        
+        if posicoes:
+            resultados[termo] = posicoes
+    
+    return resultados
+
+# Função para diagnóstico de problemas de reconhecimento
+def diagnosticar_reconhecimento(query, texto_pdf=None):
+    """
+    Função de diagnóstico para ajudar a identificar problemas de reconhecimento
+    de termos específicos no PDF.
+    
+    Args:
+        query (str): A consulta do usuário
+        texto_pdf (str, optional): Texto do PDF. Se None, usa st.session_state.pdf_text
+        
+    Returns:
+        dict: Resultados do diagnóstico
+    """
+    if texto_pdf is None:
+        if "pdf_text" not in st.session_state:
+            return {"erro": "Texto do PDF não disponível"}
+        texto_pdf = st.session_state.pdf_text
+    
+    # Extrair palavras-chave da consulta (palavras com mais de 3 letras)
+    palavras = [p for p in query.lower().split() if len(p) > 3]
+    
+    # Verificar presença das palavras-chave no texto
+    resultados = verificar_termos_no_pdf(palavras, texto_pdf)
+    
+    # Adicionar estatísticas gerais
+    diagnostico = {
+        "tamanho_texto": len(texto_pdf),
+        "palavras_analisadas": palavras,
+        "palavras_encontradas": list(resultados.keys()),
+        "detalhes": resultados
+    }
+    
+    return diagnostico
 
 def export_to_csv():
     """Exporta o histórico para CSV"""
@@ -187,7 +277,20 @@ def export_to_csv():
 def show_extracted_text():
     """Exibe o texto extraído para depuração"""
     if st.session_state.pdf_text:
-        st.text_area("Texto Extraído do PDF", st.session_state.pdf_text, height=400)
+        st.text_area("Texto Completo Extraído do PDF", st.session_state.pdf_text, height=300)
+        
+        # Adicionar ferramenta de diagnóstico para termos específicos
+        st.subheader("Diagnóstico de Termos")
+        termo_busca = st.text_input("Digite um termo para verificar no PDF:")
+        if termo_busca and st.button("Verificar Termo"):
+            resultados = verificar_termos_no_pdf([termo_busca])
+            if termo_busca.lower() in resultados:
+                st.success(f"Termo '{termo_busca}' encontrado {len(resultados[termo_busca.lower()])} vezes no documento!")
+                for i, ocorrencia in enumerate(resultados[termo_busca.lower()]):
+                    st.markdown(f"**Ocorrência {i+1}:** (posição {ocorrencia['posicao']})")
+                    st.text(f"...{ocorrencia['contexto']}...")
+            else:
+                st.error(f"Termo '{termo_busca}' não encontrado no documento.")
     else:
         st.warning("Nenhum texto extraído ainda.")
 
