@@ -224,15 +224,22 @@ with st.sidebar:
         st.write(f"Arquivo: {os.path.basename(PDF_PATH)}")
         st.write(f"Tamanho do texto: {len(st.session_state.pdf_text)} caracteres")
         
-        # Configurações de modelo
+        # Configurações de modelo - ATUALIZADO COM MAIS OPÇÕES
         st.divider()
         st.subheader("⚙️ Configurações")
         
         model = st.selectbox(
             "Modelo OpenAI:",
-            options=["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"],
+            options=[
+                "gpt-3.5-turbo",      # Modelo básico, bom custo-benefício
+                "gpt-4",              # Melhor qualidade, mais caro
+                "gpt-4-turbo",        # Melhor performance que GPT-4 com custo menor
+                "gpt-4o",             # GPT-4 Omni - modelo mais recente
+                "gpt-3.5-turbo-16k",  # Versão com contexto maior
+                "gpt-4-32k",          # GPT-4 com contexto de 32k tokens
+            ],
             index=0,  # Default para o modelo mais econômico
-            help="Selecione o modelo da OpenAI. GPT-3.5 é mais rápido e econômico, GPT-4 é mais preciso."
+            help="Selecione o modelo da OpenAI. GPT-3.5 é mais rápido e econômico, GPT-4 é mais preciso, modelos com número maior suportam mais contexto."
         )
         
         # Atualizar o modelo selecionado
