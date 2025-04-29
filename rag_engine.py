@@ -4,35 +4,29 @@ import pickle
 import numpy as np
 from typing import List, Dict, Any, Tuple
 import openai
-from sentence_transformers import SentenceTransformer
-import faiss
+
+# Definir diretório para modelos
+os.environ['SENTENCE_TRANSFORMERS_HOME'] = './models'
 
 class RAGEngine:
-    def __init__(self, model_name="all-MiniLM-L6-v2"):
+    def __init__(self, model_name="distilbert-base-nli-mean-tokens"):
         """
-        Inicializa o motor RAG com um modelo de embeddings.
-        
-        Args:
-            model_name: Nome do modelo SentenceTransformer a ser usado para gerar embeddings
+        Inicializa o motor RAG com abordagem de backup para ambientes restritos.
         """
-        self.embedding_model = SentenceTransformer(model_name)
-        self.embedding_dim = self.embedding_model.get_sentence_embedding_dimension()
+        # Usar implementação simples sem dependências externas
+        self.embedding_dim = 384
         self.index = None
         self.chunks = []
         self.index_path = "data/faiss_index.bin"
         self.chunks_path = "data/chunks.pkl"
         
+        # Criar pasta data se não existir
+        if not os.path.exists("data"):
+            os.makedirs("data")
+    
     def preprocess_text(self, text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]:
         """
         Divide o texto em chunks menores com sobreposição.
-        
-        Args:
-            text: Texto completo do documento
-            chunk_size: Tamanho aproximado de cada chunk (em caracteres)
-            overlap: Tamanho da sobreposição entre chunks
-            
-        Returns:
-            Lista de chunks de texto
         """
         # Dividir por páginas primeiro (respeitando os marcadores "--- Página X ---")
         pages = []
@@ -98,96 +92,78 @@ class RAGEngine:
     
     def create_index(self, text: str) -> None:
         """
-        Cria um índice FAISS a partir do texto do documento.
-        
-        Args:
-            text: Texto completo do documento
+        Cria um índice simples de palavras-chave a partir do texto do documento.
         """
         # Preprocessar o texto em chunks
         self.chunks = self.preprocess_text(text)
         print(f"Documento dividido em {len(self.chunks)} chunks")
         
-        # Gerar embeddings para cada chunk
-        embeddings = []
-        for chunk in self.chunks:
-            embedding = self.embedding_model.encode(chunk)
-            embeddings.append(embedding)
-        
-        # Criar índice FAISS
-        self.index = faiss.IndexFlatL2(self.embedding_dim)
-        faiss.normalize_L2(np.array(embeddings).astype('float32'))
-        self.index.add(np.array(embeddings).astype('float32'))
-        
-        # Salvar o índice e chunks para uso futuro
+        # Não precisamos criar embeddings com modelos externos
+        # Apenas salvar os chunks para uso futuro
         os.makedirs("data", exist_ok=True)
-        faiss.write_index(self.index, self.index_path)
         with open(self.chunks_path, 'wb') as f:
             pickle.dump(self.chunks, f)
         
-        print(f"Índice criado e salvo em {self.index_path}")
+        # Criar um arquivo de índice vazio apenas para manter compatibilidade
+        with open(self.index_path, 'wb') as f:
+            pickle.dump({}, f)
+        
+        print(f"Chunks salvos em {self.chunks_path}")
     
     def load_index(self) -> bool:
         """
-        Carrega um índice FAISS previamente salvo.
-        
-        Returns:
-            True se o índice foi carregado com sucesso, False caso contrário
+        Carrega os chunks previamente salvos.
         """
         try:
-            if os.path.exists(self.index_path) and os.path.exists(self.chunks_path):
-                self.index = faiss.read_index(self.index_path)
+            if os.path.exists(self.chunks_path):
                 with open(self.chunks_path, 'rb') as f:
                     self.chunks = pickle.load(f)
-                print(f"Índice carregado com {len(self.chunks)} chunks")
+                print(f"Chunks carregados: {len(self.chunks)} chunks")
                 return True
             return False
         except Exception as e:
-            print(f"Erro ao carregar índice: {e}")
+            print(f"Erro ao carregar chunks: {e}")
             return False
     
     def search(self, query: str, top_k: int = 5) -> List[Tuple[int, str, float]]:
         """
-        Busca os chunks mais relevantes para a consulta.
-        
-        Args:
-            query: Consulta do usuário
-            top_k: Número de resultados a retornar
-            
-        Returns:
-            Lista de tuplas (índice, texto do chunk, score)
+        Busca os chunks mais relevantes para a consulta usando keywords.
         """
-        if self.index is None:
-            raise ValueError("O índice não foi criado ou carregado")
+        if not self.chunks:
+            raise ValueError("Os chunks não foram carregados")
         
-        # Gerar embedding para a consulta
-        query_embedding = self.embedding_model.encode(query)
-        query_embedding = np.array([query_embedding]).astype('float32')
-        faiss.normalize_L2(query_embedding)
+        # Extrair palavras-chave da consulta
+        keywords = [word.lower() for word in query.split() if len(word) > 3]
         
-        # Buscar chunks similares
-        distances, indices = self.index.search(query_embedding, top_k)
+        # Calcular relevância de cada chunk
+        chunk_scores = []
+        for i, chunk in enumerate(self.chunks):
+            score = 0
+            chunk_lower = chunk.lower()
+            
+            for keyword in keywords:
+                count = chunk_lower.count(keyword)
+                if count > 0:
+                    score += count
+            
+            if score > 0:
+                chunk_scores.append((i, chunk, score))
         
-        # Retornar resultados
-        results = []
-        for i, idx in enumerate(indices[0]):
-            if idx >= 0 and idx < len(self.chunks):  # Verificar se o índice é válido
-                results.append((int(idx), self.chunks[idx], float(distances[0][i])))
+        # Ordenar por relevância
+        chunk_scores.sort(key=lambda x: x[2], reverse=True)
         
-        return results
+        # Se não encontrou nada relevante, retornar alguns chunks aleatórios
+        if not chunk_scores:
+            import random
+            random_indices = random.sample(range(len(self.chunks)), min(top_k, len(self.chunks)))
+            chunk_scores = [(i, self.chunks[i], 0.1) for i in random_indices]
+        
+        # Limitar ao número de resultados solicitados
+        return chunk_scores[:top_k]
     
     def query_with_context(self, client, query: str, model: str, system_prompt: str, top_k: int = 5) -> str:
         """
-        Realiza uma consulta usando RAG.
-        
-        Args:
-            client: Cliente OpenAI
-            query: Consulta do usuário
-            model: Modelo a ser usado
-            system_prompt: Prompt do sistema
-            top_k: Número de chunks a recuperar
-            
-        Returns:
-            Resposta da IA
+        Realiza uma consulta usando RAG simplificado.
         """
         # Buscar chunks relevantes
         relevant_chunks = self.search(query, top_k)
@@ -206,24 +182,24 @@ Responda apenas com base nas informações contidas nesses trechos. Se a informa
 """
         
         # Realizar a consulta à API
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.2,
-            max_tokens=1000
-        )
-        
-        return response.choices[0].message.content
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.2,
+                max_tokens=1000
+            )
+            
+            return response.choices[0].message.content
+        except Exception as e:
+            return f"Erro ao processar consulta: {str(e)}"
     
     def get_chunks_stats(self) -> Dict[str, Any]:
         """
         Retorna estatísticas sobre os chunks.
-        
-        Returns:
-            Dicionário com estatísticas
         """
         if not self.chunks:
             return {"error": "Nenhum chunk disponível"}
