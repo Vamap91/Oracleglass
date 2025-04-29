@@ -1,4 +1,4 @@
-# rag_engine.py
+# Aqui a Magica Acontece, entrando com RAG na operação
 import os
 import pickle
 import numpy as np
