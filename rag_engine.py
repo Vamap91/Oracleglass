@@ -625,7 +625,7 @@ class RAGEngine:
                     weight = 3 if term in query.lower() else 1
                     score += chunk["term_freq"].get(term, 0) * weight
             
-# 3.3 Pontuação adicional para correspondências importantes
+            # 3.3 Pontuação adicional para correspondências importantes
             for category, count in chunk["important_matches"].items():
                 if category in query_info["important_categories"]:
                     score += count * 5
@@ -684,9 +684,20 @@ class RAGEngine:
         # 8. Retornar os top_k mais relevantes
         return unique_chunks[:top_k]
     
-    def query_with_context(self, client, query: str, model: str, system_prompt: str, top_k: int = 7) -> str:
+    def query_with_context(self, client, query: str, model: str, system_prompt: str, temperature: float = 0.2, top_k: int = 7) -> str:
         """
         Processa consulta com contexto enriquecido baseado na classificação.
+        
+        Args:
+            client: Cliente OpenAI
+            query: A consulta do usuário
+            model: Modelo a ser usado
+            system_prompt: Prompt de sistema para instruir o modelo
+            temperature: Temperatura para controlar aleatoriedade das respostas (0.0 a 1.0)
+            top_k: Número de chunks relevantes a recuperar
+            
+        Returns:
+            str: Resposta gerada pelo modelo
         """
         # 1. Classificar a consulta
         query_info = self.classify_query(query)
@@ -753,7 +764,7 @@ IMPORTANTE: Responda APENAS com base nas informações contidas nesses trechos. 
                     {"role": "system", "content": enriched_system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.2,
+                temperature=temperature,  # Usar o parâmetro de temperatura passado
                 max_tokens=1000
             )
             
