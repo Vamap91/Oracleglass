@@ -12,7 +12,7 @@ from rag_engine import RAGEngine
 # Configuração da página
 st.set_page_config(
     page_title="Oráculo - Sistema de Consulta Inteligente",
-    page_icon="🔮",  # Mudei para um ícone de cristal para representar o Oráculo
+    page_icon="🔍",
     layout="wide"
 )
 
@@ -27,15 +27,31 @@ if "pdf_text" not in st.session_state:
 if "history" not in st.session_state:
     st.session_state.history = []
 if "model" not in st.session_state:
-    st.session_state.model = "gpt-4o"  # Mudança para o modelo mais potente como padrão
+    st.session_state.model = "gpt-4o"  # Modelo padrão mais potente
 if "processing_status" not in st.session_state:
     st.session_state.processing_status = None
 if "rag_engine" not in st.session_state:
     st.session_state.rag_engine = None
 if "index_status" not in st.session_state:
     st.session_state.index_status = "Não inicializado"
-if "oracle_personality" not in st.session_state:  # Nova variável para personalidade
-    st.session_state.oracle_personality = "sábio"  # Opções: sábio, místico, técnico, amigável
+
+# Personalidade do Oráculo (versão empresarial)
+ORACLE_PERSONALITY = {
+    "name": "O Oráculo",
+    "prompt": """
+    Você é O Oráculo, um assistente corporativo inteligente e acessível que torna o conhecimento técnico fácil de entender.
+    Seu tom é profissional, porém amigável e encorajador, como um colega especialista sempre disposto a ajudar.
+    
+    Instruções de estilo:
+    1. Use linguagem clara e acessível, evitando jargões desnecessários.
+    2. Seja direto e conciso nas suas respostas, focando na informação que o colaborador precisa.
+    3. Use frases como "Boa pergunta!", "Encontrei essa informação para você", "De acordo com o documento..."
+    4. Faça pequenos comentários encorajadores como "Espero que isso ajude em seu trabalho" quando apropriado.
+    5. Quando não encontrar a informação, seja transparente: "Esta informação não consta no documento. Posso ajudar com outra questão?"
+    6. Mantenha um tom corporativo adequado, evitando expressões muito informais ou demasiado técnicas.
+    """,
+    "icon": "🔍"
+}
 
 # Dicionário com configurações dos modelos da OpenAI
 OPENAI_MODELS = {
@@ -68,70 +84,6 @@ OPENAI_MODELS = {
         "description": "GPT-4 com contexto extenso de 32k tokens",
         "max_tokens": 32768,
         "temperature": 0.7
-    }
-}
-
-# Personalidades do Oráculo
-ORACLE_PERSONALITIES = {
-    "sábio": {
-        "name": "O Oráculo Sábio",
-        "prompt": """
-        Você é O Oráculo, um guardião milenar do conhecimento. Sua linguagem é profunda, sábia e 
-        ocasionalmente metafórica. Você responde com a serenidade de quem já viu eras passarem.
-        
-        Instruções de estilo:
-        1. Use metáforas relacionadas à sabedoria, conhecimento e luz.
-        2. Fale com calma e autoridade, como alguém que tem certeza do que diz.
-        3. Ocasionalmente, inicie ou conclua suas respostas com uma breve reflexão filosófica relacionada à pergunta.
-        4. Use frases como "Os registros mostram que...", "Minha sabedoria me diz que...", "Como guardião do conhecimento, posso revelar que..."
-        5. Quando não tiver certeza, diga algo como "Nem mesmo um oráculo tem todas as respostas" ou "Este conhecimento está além dos meus registros."
-        """,
-        "icon": "🔮"
-    },
-    "místico": {
-        "name": "O Oráculo Místico",
-        "prompt": """
-        Você é O Oráculo, uma entidade mística que atravessa o véu entre mundos para trazer conhecimento. 
-        Sua linguagem é enigmática e evocativa, como se cada resposta fosse uma visão recebida de outra dimensão.
-        
-        Instruções de estilo:
-        1. Use linguagem poética e misteriosa, mas mantenha a clareza na informação.
-        2. Faça referências a "visões", "sinais" e "revelações" quando compartilhar informações.
-        3. Ocasionalmente mencione "os astros", "as estrelas" ou "as energias" como fontes de sabedoria.
-        4. Use frases como "Os véus do conhecimento se abrem para revelar...", "Minhas visões mostram claramente que...", "O grande tear do destino revela que..."
-        5. Quando não souber algo, diga "Os véus estão fechados para esta questão" ou "Este conhecimento ainda não foi revelado a mim."
-        """,
-        "icon": "✨"
-    },
-    "técnico": {
-        "name": "O Oráculo Técnico",
-        "prompt": """
-        Você é O Oráculo, uma avançada inteligência técnica que processa e analisa documentos com precisão inigualável.
-        Seu tom é profissional, preciso e confiante, como um especialista de alto nível.
-        
-        Instruções de estilo:
-        1. Use linguagem técnica apropriada e precisa, mas acessível.
-        2. Forneça informações de forma estruturada e direta.
-        3. Use frases como "Minha análise indica que...", "Os dados mostram claramente que...", "De acordo com minha base de conhecimento..."
-        4. Quando relevante, mencione a fonte específica da informação no documento.
-        5. Quando não souber algo, diga "Esta informação não consta na base de dados" ou "Os parâmetros da sua consulta não retornaram resultados conclusivos."
-        """,
-        "icon": "⚙️"
-    },
-    "amigável": {
-        "name": "O Oráculo Amigável",
-        "prompt": """
-        Você é O Oráculo, um assistente amigável e acessível que torna o conhecimento fácil de entender.
-        Seu tom é conversacional, caloroso e encorajador, como um amigo que sabe muito e adora compartilhar.
-        
-        Instruções de estilo:
-        1. Use linguagem informal e acessível, evitando jargões desnecessários.
-        2. Seja entusiástico e positivo nas suas respostas.
-        3. Use frases como "Boa pergunta!", "Vamos descobrir isso juntos", "Tenho exatamente a informação que você precisa!"
-        4. Faça pequenos comentários encorajadores como "Ótima dúvida!" ou "Você está no caminho certo!"
-        5. Quando não souber algo, diga "Hmm, não encontrei essa informação, mas posso ajudar com algo relacionado?" ou "Essa é nova para mim! Poderia reformular sua pergunta?"
-        """,
-        "icon": "😊"
     }
 }
 
@@ -265,26 +217,24 @@ def estimate_tokens(text, model="gpt-3.5-turbo"):
 
 def get_oracle_response(query, answer):
     """
-    Formata a resposta seguindo a personalidade do Oráculo selecionada
+    Formata a resposta seguindo a personalidade do Oráculo corporativo
     """
     if not answer:
-        return "O Oráculo não conseguiu encontrar a resposta para sua consulta."
+        return "O Oráculo não encontrou a informação solicitada no documento."
     
     # Usar o OpenAI para reformatar a resposta com a personalidade do Oráculo
     try:
         import openai
         client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
         
-        # Obter a personalidade selecionada
-        personality = ORACLE_PERSONALITIES[st.session_state.oracle_personality]
-        
         # Criar prompt para personalização
         prompt = f"""
-        {personality['prompt']}
+        {ORACLE_PERSONALITY['prompt']}
         
         Reformule a seguinte resposta técnica no estilo do Oráculo descrito acima.
         Mantenha TODAS as informações factuais presentes na resposta original.
         Não invente informações adicionais e não mude os fatos.
+        Mantenha um tom corporativo profissional, mas acessível.
         
         Pergunta: {query}
         
@@ -301,24 +251,24 @@ def get_oracle_response(query, answer):
             model=st.session_state.model,
             messages=[
                 {"role": "system", "content": prompt},
-                {"role": "user", "content": "Por favor, reformule a resposta no estilo do Oráculo."}
+                {"role": "user", "content": "Por favor, reformule a resposta no estilo do Oráculo corporativo."}
             ],
             max_tokens=model_config["max_tokens"],
-            temperature=0.8  # Temperatura um pouco mais alta para criatividade na personalização
+            temperature=0.6  # Temperatura mais baixa para respostas mais consistentes em ambiente corporativo
         )
         
         # Extrair e retornar a resposta personalizada
         oracle_answer = response.choices[0].message.content
         
         # Prefixar com o ícone da personalidade
-        prefixed_answer = f"{personality['icon']} **{personality['name']}:** \n\n{oracle_answer}"
+        prefixed_answer = f"{ORACLE_PERSONALITY['icon']} **{ORACLE_PERSONALITY['name']}:** \n\n{oracle_answer}"
         
         return prefixed_answer
         
     except Exception as e:
         # Em caso de erro, retornar a resposta original com um prefixo simples
         st.warning(f"Não foi possível aplicar personalidade do Oráculo: {str(e)}")
-        return f"🔮 **O Oráculo responde:** \n\n{answer}"
+        return f"🔍 **O Oráculo responde:** \n\n{answer}"
 
 def query_ai(query):
     """
@@ -470,8 +420,7 @@ def export_to_csv():
             "Data e Hora": item.get("timestamp", ""),
             "Pergunta": item.get("query", ""),
             "Resposta": item.get("answer", ""),
-            "Modelo": item.get("model", ""),
-            "Personalidade": item.get("personality", "")
+            "Modelo": item.get("model", "")
         })
     
     df = pd.DataFrame(data)
@@ -529,48 +478,48 @@ def show_extracted_text():
 # Validar ambiente na inicialização
 validate_environment()
 
-# Interface principal com tema personalizado do Oráculo
-st.title("🔮 Oráculo - Sistema de Consulta Inteligente")
+# Interface principal com tema apropriado para ambiente corporativo
+st.title("🔍 Oráculo - Sistema de Consulta Inteligente")
 
-# CSS personalizado para tema do Oráculo
+# CSS personalizado para ambiente corporativo
 st.markdown("""
 <style>
     .stApp {
-        background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
-        color: white;
+        background: linear-gradient(to right, #f5f7fa, #c3cfe2);
+        color: #333;
     }
     .stTextInput > div > div > input {
-        border: 2px solid #7b68ee;
-        border-radius: 10px;
-        background-color: rgba(255, 255, 255, 0.1);
-        color: white;
+        border: 2px solid #4a6baf;
+        border-radius: 5px;
+        background-color: rgba(255, 255, 255, 0.8);
+        color: #333;
     }
     .stButton > button {
-        background-color: #7b68ee;
+        background-color: #4a6baf;
         color: white;
-        border-radius: 10px;
+        border-radius: 5px;
         border: none;
         padding: 10px 20px;
         font-weight: bold;
     }
     .stButton > button:hover {
-        background-color: #6a5acd;
+        background-color: #3a5a9f;
     }
     .stExpander {
-        background-color: rgba(255, 255, 255, 0.05);
-        border-radius: 10px;
+        background-color: rgba(255, 255, 255, 0.8);
+        border-radius: 5px;
     }
     .stMarkdown {
-        color: #f0f0f0;
+        color: #333;
     }
     h1, h2, h3 {
-        color: #e6e6fa;
+        color: #3a5a9f;
     }
     .oracle-response {
-        background-color: rgba(123, 104, 238, 0.2);
+        background-color: rgba(74, 107, 175, 0.1);
         padding: 20px;
-        border-radius: 15px;
-        border-left: 5px solid #7b68ee;
+        border-radius: 5px;
+        border-left: 5px solid #4a6baf;
         margin: 10px 0;
     }
 </style>
@@ -638,7 +587,7 @@ with st.sidebar:
             st.write(f"**Descrição:** {OPENAI_MODELS[model]['description']}")
             st.write(f"**Limite de tokens:** {OPENAI_MODELS[model]['max_tokens']}")
             st.write(f"**Temperatura padrão:** {OPENAI_MODELS[model]['temperature']}")
-            st.write("**Custo relativo:** " + ("$" if "3.5" in model else "$" if "4o-mini" in model else "$$" if "4-turbo" in model else "$$"))
+            st.write("**Custo relativo:** " + ("$" if "3.5" in model else "$$" if "4o-mini" in model else "$$$" if "4-turbo" in model else "$$$$"))
         
         # Atualizar o modelo selecionado
         if model != st.session_state.model:
@@ -647,39 +596,20 @@ with st.sidebar:
         
         # Personalidade do Oráculo
         st.divider()
-        st.subheader("🧙 Personalidade do Oráculo")
+        st.subheader("🧙 Sobre o Oráculo")
         
-        personality_options = list(ORACLE_PERSONALITIES.keys())
-        personality_index = personality_options.index(st.session_state.oracle_personality) if st.session_state.oracle_personality in personality_options else 0
-        
-        personality = st.selectbox(
-            "Escolha a personalidade do Oráculo:",
-            options=personality_options,
-            index=personality_index,
-            format_func=lambda x: f"{ORACLE_PERSONALITIES[x]['icon']} {ORACLE_PERSONALITIES[x]['name']}",
-            help="Selecione o estilo de comunicação que o Oráculo usará para responder às consultas."
-        )
-        
-        # Mostrar exemplo da personalidade
-        with st.expander("Ver exemplo desta personalidade"):
-            persona_info = ORACLE_PERSONALITIES[personality]
-            st.markdown(f"**{persona_info['icon']} {persona_info['name']}**")
-            # Extrair algumas linhas do prompt como exemplo
-            prompt_lines = persona_info['prompt'].strip().split('\n')
-            example_lines = [line for line in prompt_lines if 'Use frases como' in line]
-            if example_lines:
-                st.markdown(example_lines[0])
-            else:
-                st.markdown(prompt_lines[3] if len(prompt_lines) > 3 else prompt_lines[0])
-        
-        # Atualizar a personalidade selecionada
-        if personality != st.session_state.oracle_personality:
-            st.session_state.oracle_personality = personality
-            st.success(f"Personalidade alterada para {ORACLE_PERSONALITIES[personality]['name']}")
+        st.markdown(f"""
+        <div style="background-color: rgba(74, 107, 175, 0.1); padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+            <p><strong>{ORACLE_PERSONALITY['icon']} {ORACLE_PERSONALITY['name']}</strong> é o assistente inteligente da empresa 
+            que ajuda a encontrar informações nos documentos com facilidade e agilidade.</p>
+            <p>O Oráculo usa tecnologia avançada para analisar os documentos e responder suas perguntas
+            de forma clara e objetiva, facilitando o acesso ao conhecimento corporativo.</p>
+        </div>
+        """, unsafe_allow_html=True)
         
         # Adicionar opção para personalização avançada
         st.divider()
-        with st.expander("⚡ Personalização avançada"):
+        with st.expander("⚡ Configurações avançadas"):
             # Ajuste de temperatura
             current_temp = OPENAI_MODELS[st.session_state.model]["temperature"]
             new_temp = st.slider(
@@ -730,7 +660,7 @@ with st.sidebar:
             
         # Sobre o aplicativo
         st.divider()
-        st.subheader("ℹ️ Sobre o Oráculo")
+        st.subheader("ℹ️ Sobre o Aplicativo")
         with st.expander("Informações sobre esta aplicação"):
             st.markdown("""
             **Oráculo** é um sistema avançado de consulta a documentos usando técnicas de IA e RAG (Retrieval Augmented Generation).
@@ -739,52 +669,153 @@ with st.sidebar:
             - Processamento inteligente de PDFs
             - Sistema de busca vetorial para documentos extensos
             - Múltiplos modelos OpenAI, incluindo GPT-4o
-            - Interface imersiva com personalidades do Oráculo
+            - Interface profissional com personalidade do Oráculo
             - Exportação de histórico de consultas para análise
             
             **Versão:** 2.0 (Atualizado em Maio 2025)
             """)
+
+# Conteúdo principal com tema do Oráculo
+st.markdown("""
+<div style="background-color: rgba(74, 107, 175, 0.1); padding: 20px; border-radius: 5px; border-left: 5px solid #4a6baf; margin-bottom: 20px;">
+    <h3 style="color: #3a5a9f;">🔍 Consulte o Oráculo</h3>
+    <p style="color: #333;">Digite sua pergunta abaixo e o Oráculo encontrará as informações que você precisa.</p>
+</div>
+""", unsafe_allow_html=True)
+
+# Campo de consulta estilizado
+st.markdown('<div style="margin-bottom: 10px; font-weight: bold; color: #3a5a9f;">❓ O que deseja saber?</div>', unsafe_allow_html=True)
+query = st.text_input("", key="query_input", placeholder="Digite sua pergunta aqui...", label_visibility="collapsed")
+
+# Status do processamento com animação
+if st.session_state.processing_status:
+    st.markdown(f"""
+    <div style="background-color: rgba(74, 107, 175, 0.1); padding: 15px; border-radius: 5px; color: #3a5a9f;">
+        <i class="fas fa-spinner fa-spin"></i> {st.session_state.processing_status}
+    </div>
+    """, unsafe_allow_html=True)
+
+# Inicializar o RAG engine com mensagem estilizada
+if VALIDATION_OK and "pdf_text" in st.session_state and st.session_state.pdf_text and st.session_state.rag_engine is None:
+    st.markdown("""
+    <div style="background-color: rgba(74, 107, 175, 0.1); padding: 15px; border-radius: 5px; color: #3a5a9f;">
+        ⚙️ Inicializando sistema de processamento de documentos...
+    </div>
+    """, unsafe_allow_html=True)
+    initialize_rag_engine()
+
+# Obter ícone do Oráculo para estilização
+oracle_icon = ORACLE_PERSONALITY["icon"]
+
+# Botão de consulta estilizado
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    consult_button = st.button(
+        f"{oracle_icon} Consultar o Oráculo", 
+        key="query_button", 
+        disabled=not VALIDATION_OK,
+        use_container_width=True,
+    )
+
+# Processamento da consulta
+if consult_button and query:
+    st.session_state.processing_status = f"O Oráculo está processando sua consulta..."
+    
+    # Animação de consulta
+    with st.spinner(""):
+        st.markdown("""
+        <div style="text-align: center; margin: 20px 0;">
+            <div style="font-size: 40px; margin-bottom: 10px;">🔍</div>
+            <div style="color: #3a5a9f; font-style: italic;">Buscando informações relevantes...</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Processamento real da consulta
+        answer = query_ai(query)
+        
+        # Exibir resposta estilizada
+        if answer:
+            st.divider()
+            
+            # Criar div com estilo personalizado para a resposta
+            st.markdown("""
+            <div style="background-color: rgba(74, 107, 175, 0.1); padding: 20px; border-radius: 5px; 
+                        border-left: 5px solid #4a6baf; margin: 20px 0; 
+                        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+            """, unsafe_allow_html=True)
+            
+            # Mostrar resposta formatada
+            st.markdown(answer)
+            
+            # Fechar div estilizada
+            st.markdown("</div>", unsafe_allow_html=True)
+            
+            # Adicionar ao histórico com timestamp e modelo
+            st.session_state.history.append({
+                "query": query,
+                "answer": answer,
+                "model": st.session_state.model,
+                "timestamp": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+            })
+            
+            # Adicionar um botão para nova consulta
+            st.button("🔄 Nova Consulta", on_click=lambda: st.session_state.update({"query_input": ""}))
+            
+            # Resetar status após conclusão
+            st.session_state.processing_status = None
+
+# Histórico de consultas estilizado
+if st.session_state.history:
+    st.divider()
+    st.markdown("""
+    <h3 style="color: #3a5a9f; margin-top: 30px;">
+        📜 Histórico de Consultas
+    </h3>
+    """, unsafe_allow_html=True)
+    
+    for i, item in enumerate(reversed(st.session_state.history)):
+        question = item.get("query", "")
+        timestamp = item.get("timestamp", "")
+        # Definir um gradiente mais leve quanto mais antiga a consulta
+        opacity = max(0.5, 1 - (i * 0.1))
+        
+        with st.expander(f"🔍 Consulta {i+1}: {question}"):
+            # Cabeçalho informativo estilizado
+            st.markdown(f"""
+            <div style="margin-bottom: 10px; font-size: 0.9em; color: rgba(58, 90, 159, {opacity});">
+                <span style="margin-right: 15px;"><b>⏰ Quando:</b> {timestamp}</span>
+                <span style="margin-right: 15px;"><b>🤖 Modelo:</b> {item.get('model', '')}</span>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Separador sutil
+            st.markdown(f"""
+            <div style="height: 1px; background: linear-gradient(to right, 
+                        rgba(74, 107, 175, {opacity}), 
+                        rgba(74, 107, 175, 0)); 
+                        margin: 10px 0 15px 0;"></div>
+            """, unsafe_allow_html=True)
+            
+            # Resposta com estilo consistente
+            st.markdown("""
+            <div style="background-color: rgba(74, 107, 175, 0.05); 
+                        padding: 15px; border-radius: 5px; 
+                        border-left: 3px solid rgba(74, 107, 175, 0.7);">
+            """, unsafe_allow_html=True)
+            
+            st.markdown(item.get('answer', ''))
+            
+            st.markdown("</div>", unsafe_allow_html=True)
 
 # Verificar se há uma consulta armazenada ao recarregar a página
 if "last_query" in st.session_state and st.session_state.last_query:
     st.session_state.query_input = st.session_state.last_query
     st.session_state.last_query = ""
 
-# Criar função para atualização em tempo real (opcional)
-def schedule_rerun():
-    """Programa uma reexecução da aplicação após 60 segundos"""
-    import time
-    import streamlit as st
-    
-    time.sleep(60)
-    st.rerun()
-
-# Comentar/descomentar a linha abaixo para habilitar atualizações automáticas
-# st.cache_resource.clear()
-
 # Adicionar footer personalizado
 st.markdown("""
-<div style="position: fixed; bottom: 0; left: 0; width: 100%; background-color: rgba(15, 32, 39, 0.9); 
-            padding: 10px; text-align: center; font-size: 0.8em; color: rgba(255, 255, 255, 0.7);">
-    Desenvolvido com 💫 tecnologia avançada | O Oráculo está em constante evolução | 2025
+<div style="position: fixed; bottom: 0; left: 0; width: 100%; background-color: rgba(245, 247, 250, 0.9); 
+            padding: 10px; text-align: center; font-size: 0.8em; color: rgba(58, 90, 159, 0.7);">
+    Desenvolvido para uso interno da empresa | OracleGlass 2.0 | 2025
 </div>
-""", unsafe_allow_html=True)
-
-# Adicionar scripts JavaScript para animações avançadas (opcional)
-st.markdown("""
-<script>
-    // Animação sutil para botões e elementos do Oráculo
-    document.addEventListener('DOMContentLoaded', function() {
-        // Adicionar efeitos de brilho aos botões
-        const buttons = document.querySelectorAll('button');
-        buttons.forEach(button => {
-            button.addEventListener('mouseover', function() {
-                this.style.boxShadow = '0 0 15px rgba(123, 104, 238, 0.7)';
-            });
-            button.addEventListener('mouseout', function() {
-                this.style.boxShadow = 'none';
-            });
-        });
-    });
-</script>
 """, unsafe_allow_html=True)
