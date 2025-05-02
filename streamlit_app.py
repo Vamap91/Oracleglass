@@ -12,7 +12,7 @@ from rag_engine import RAGEngine
 # Configuração da página
 st.set_page_config(
     page_title="Oráculo - Sistema de Consulta Inteligente",
-    page_icon="🚗",
+    page_icon="🔮",  # Mudei para um ícone de cristal para representar o Oráculo
     layout="wide"
 )
 
@@ -27,13 +27,113 @@ if "pdf_text" not in st.session_state:
 if "history" not in st.session_state:
     st.session_state.history = []
 if "model" not in st.session_state:
-    st.session_state.model = "gpt-3.5-turbo"  # Modelo padrão mais econômico
+    st.session_state.model = "gpt-4o"  # Mudança para o modelo mais potente como padrão
 if "processing_status" not in st.session_state:
     st.session_state.processing_status = None
 if "rag_engine" not in st.session_state:
     st.session_state.rag_engine = None
 if "index_status" not in st.session_state:
     st.session_state.index_status = "Não inicializado"
+if "oracle_personality" not in st.session_state:  # Nova variável para personalidade
+    st.session_state.oracle_personality = "sábio"  # Opções: sábio, místico, técnico, amigável
+
+# Dicionário com configurações dos modelos da OpenAI
+OPENAI_MODELS = {
+    "gpt-3.5-turbo": {
+        "description": "Modelo básico, bom custo-benefício",
+        "max_tokens": 4096,
+        "temperature": 0.7
+    },
+    "gpt-4o": {
+        "description": "Modelo mais recente e avançado (recomendado para consultas em PDF)",
+        "max_tokens": 8192,
+        "temperature": 0.7
+    },
+    "gpt-4o-mini": {
+        "description": "Versão mais rápida e econômica do 4o",
+        "max_tokens": 4096,
+        "temperature": 0.7
+    },
+    "gpt-4-turbo": {
+        "description": "Melhor performance que GPT-4 com custo menor",
+        "max_tokens": 4096,
+        "temperature": 0.7
+    },
+    "gpt-3.5-turbo-16k": {
+        "description": "Versão com contexto maior do GPT-3.5",
+        "max_tokens": 16384,
+        "temperature": 0.7
+    },
+    "gpt-4-32k": {
+        "description": "GPT-4 com contexto extenso de 32k tokens",
+        "max_tokens": 32768,
+        "temperature": 0.7
+    }
+}
+
+# Personalidades do Oráculo
+ORACLE_PERSONALITIES = {
+    "sábio": {
+        "name": "O Oráculo Sábio",
+        "prompt": """
+        Você é O Oráculo, um guardião milenar do conhecimento. Sua linguagem é profunda, sábia e 
+        ocasionalmente metafórica. Você responde com a serenidade de quem já viu eras passarem.
+        
+        Instruções de estilo:
+        1. Use metáforas relacionadas à sabedoria, conhecimento e luz.
+        2. Fale com calma e autoridade, como alguém que tem certeza do que diz.
+        3. Ocasionalmente, inicie ou conclua suas respostas com uma breve reflexão filosófica relacionada à pergunta.
+        4. Use frases como "Os registros mostram que...", "Minha sabedoria me diz que...", "Como guardião do conhecimento, posso revelar que..."
+        5. Quando não tiver certeza, diga algo como "Nem mesmo um oráculo tem todas as respostas" ou "Este conhecimento está além dos meus registros."
+        """,
+        "icon": "🔮"
+    },
+    "místico": {
+        "name": "O Oráculo Místico",
+        "prompt": """
+        Você é O Oráculo, uma entidade mística que atravessa o véu entre mundos para trazer conhecimento. 
+        Sua linguagem é enigmática e evocativa, como se cada resposta fosse uma visão recebida de outra dimensão.
+        
+        Instruções de estilo:
+        1. Use linguagem poética e misteriosa, mas mantenha a clareza na informação.
+        2. Faça referências a "visões", "sinais" e "revelações" quando compartilhar informações.
+        3. Ocasionalmente mencione "os astros", "as estrelas" ou "as energias" como fontes de sabedoria.
+        4. Use frases como "Os véus do conhecimento se abrem para revelar...", "Minhas visões mostram claramente que...", "O grande tear do destino revela que..."
+        5. Quando não souber algo, diga "Os véus estão fechados para esta questão" ou "Este conhecimento ainda não foi revelado a mim."
+        """,
+        "icon": "✨"
+    },
+    "técnico": {
+        "name": "O Oráculo Técnico",
+        "prompt": """
+        Você é O Oráculo, uma avançada inteligência técnica que processa e analisa documentos com precisão inigualável.
+        Seu tom é profissional, preciso e confiante, como um especialista de alto nível.
+        
+        Instruções de estilo:
+        1. Use linguagem técnica apropriada e precisa, mas acessível.
+        2. Forneça informações de forma estruturada e direta.
+        3. Use frases como "Minha análise indica que...", "Os dados mostram claramente que...", "De acordo com minha base de conhecimento..."
+        4. Quando relevante, mencione a fonte específica da informação no documento.
+        5. Quando não souber algo, diga "Esta informação não consta na base de dados" ou "Os parâmetros da sua consulta não retornaram resultados conclusivos."
+        """,
+        "icon": "⚙️"
+    },
+    "amigável": {
+        "name": "O Oráculo Amigável",
+        "prompt": """
+        Você é O Oráculo, um assistente amigável e acessível que torna o conhecimento fácil de entender.
+        Seu tom é conversacional, caloroso e encorajador, como um amigo que sabe muito e adora compartilhar.
+        
+        Instruções de estilo:
+        1. Use linguagem informal e acessível, evitando jargões desnecessários.
+        2. Seja entusiástico e positivo nas suas respostas.
+        3. Use frases como "Boa pergunta!", "Vamos descobrir isso juntos", "Tenho exatamente a informação que você precisa!"
+        4. Faça pequenos comentários encorajadores como "Ótima dúvida!" ou "Você está no caminho certo!"
+        5. Quando não souber algo, diga "Hmm, não encontrei essa informação, mas posso ajudar com algo relacionado?" ou "Essa é nova para mim! Poderia reformular sua pergunta?"
+        """,
+        "icon": "😊"
+    }
+}
 
 def validate_environment():
     """Valida todo o ambiente necessário para funcionamento do sistema"""
@@ -163,6 +263,63 @@ def estimate_tokens(text, model="gpt-3.5-turbo"):
         # Estimativa simples se tiktoken falhar
         return len(text) // 4
 
+def get_oracle_response(query, answer):
+    """
+    Formata a resposta seguindo a personalidade do Oráculo selecionada
+    """
+    if not answer:
+        return "O Oráculo não conseguiu encontrar a resposta para sua consulta."
+    
+    # Usar o OpenAI para reformatar a resposta com a personalidade do Oráculo
+    try:
+        import openai
+        client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+        
+        # Obter a personalidade selecionada
+        personality = ORACLE_PERSONALITIES[st.session_state.oracle_personality]
+        
+        # Criar prompt para personalização
+        prompt = f"""
+        {personality['prompt']}
+        
+        Reformule a seguinte resposta técnica no estilo do Oráculo descrito acima.
+        Mantenha TODAS as informações factuais presentes na resposta original.
+        Não invente informações adicionais e não mude os fatos.
+        
+        Pergunta: {query}
+        
+        Resposta técnica original: {answer}
+        
+        Resposta no estilo do Oráculo:
+        """
+        
+        # Obter configurações do modelo atual
+        model_config = OPENAI_MODELS.get(st.session_state.model, {"max_tokens": 4096, "temperature": 0.7})
+        
+        # Chamar API para reformular a resposta
+        response = client.chat.completions.create(
+            model=st.session_state.model,
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": "Por favor, reformule a resposta no estilo do Oráculo."}
+            ],
+            max_tokens=model_config["max_tokens"],
+            temperature=0.8  # Temperatura um pouco mais alta para criatividade na personalização
+        )
+        
+        # Extrair e retornar a resposta personalizada
+        oracle_answer = response.choices[0].message.content
+        
+        # Prefixar com o ícone da personalidade
+        prefixed_answer = f"{personality['icon']} **{personality['name']}:** \n\n{oracle_answer}"
+        
+        return prefixed_answer
+        
+    except Exception as e:
+        # Em caso de erro, retornar a resposta original com um prefixo simples
+        st.warning(f"Não foi possível aplicar personalidade do Oráculo: {str(e)}")
+        return f"🔮 **O Oráculo responde:** \n\n{answer}"
+
 def query_ai(query):
     """
     Processa uma consulta usando RAG (Retrieval Augmented Generation)
@@ -198,17 +355,24 @@ def query_ai(query):
         # Número de chunks a recuperar (ajuste conforme necessário)
         top_k = 5
         
-        # Usar o motor RAG para consulta
+        # Obter configurações do modelo atual
+        model_config = OPENAI_MODELS.get(st.session_state.model, {"max_tokens": 4096, "temperature": 0.7})
+        
+        # Usar o motor RAG para consulta com temperatura personalizada
         response = st.session_state.rag_engine.query_with_context(
             client=client,
             query=query,
             model=st.session_state.model,
             system_prompt=system_prompt,
+            temperature=model_config["temperature"],
             top_k=top_k
         )
         
+        # Aplicar personalidade do Oráculo à resposta técnica
+        oracle_response = get_oracle_response(query, response)
+        
         st.session_state.processing_status = "Consulta processada com sucesso."
-        return response
+        return oracle_response
         
     except Exception as e:
         st.error(f"Erro inesperado ao processar consulta: {str(e)}")
@@ -306,7 +470,8 @@ def export_to_csv():
             "Data e Hora": item.get("timestamp", ""),
             "Pergunta": item.get("query", ""),
             "Resposta": item.get("answer", ""),
-            "Modelo": item.get("model", "")
+            "Modelo": item.get("model", ""),
+            "Personalidade": item.get("personality", "")
         })
     
     df = pd.DataFrame(data)
@@ -364,12 +529,56 @@ def show_extracted_text():
 # Validar ambiente na inicialização
 validate_environment()
 
-# Interface principal
-st.title("🚗 Oráculo - Sistema de Consulta Inteligente")
+# Interface principal com tema personalizado do Oráculo
+st.title("🔮 Oráculo - Sistema de Consulta Inteligente")
+
+# CSS personalizado para tema do Oráculo
+st.markdown("""
+<style>
+    .stApp {
+        background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
+        color: white;
+    }
+    .stTextInput > div > div > input {
+        border: 2px solid #7b68ee;
+        border-radius: 10px;
+        background-color: rgba(255, 255, 255, 0.1);
+        color: white;
+    }
+    .stButton > button {
+        background-color: #7b68ee;
+        color: white;
+        border-radius: 10px;
+        border: none;
+        padding: 10px 20px;
+        font-weight: bold;
+    }
+    .stButton > button:hover {
+        background-color: #6a5acd;
+    }
+    .stExpander {
+        background-color: rgba(255, 255, 255, 0.05);
+        border-radius: 10px;
+    }
+    .stMarkdown {
+        color: #f0f0f0;
+    }
+    h1, h2, h3 {
+        color: #e6e6fa;
+    }
+    .oracle-response {
+        background-color: rgba(123, 104, 238, 0.2);
+        padding: 20px;
+        border-radius: 15px;
+        border-left: 5px solid #7b68ee;
+        margin: 10px 0;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # Barra lateral com validações e configurações
 with st.sidebar:
-    st.header("⚙️ Validação do Sistema")
+    st.header("⚙️ Configuração do Oráculo")
     
     # Status de validação da chave OpenAI
     openai_status = "✅" if VALIDATION_MESSAGES.get("openai_key") == "OK" else "❌"
@@ -411,24 +620,92 @@ with st.sidebar:
         st.divider()
         st.subheader("⚙️ Configurações")
         
+        # Seleção do modelo
+        model_options = list(OPENAI_MODELS.keys())
+        model_index = model_options.index(st.session_state.model) if st.session_state.model in model_options else 0
+        
         model = st.selectbox(
             "Modelo OpenAI:",
-            options=[
-                "gpt-3.5-turbo",      # Modelo básico, bom custo-benefício
-                "gpt-4",              # Melhor qualidade, mais caro
-                "gpt-4-turbo",        # Melhor performance que GPT-4 com custo menor
-                "gpt-4o",             # GPT-4 Omni - modelo mais recente
-                "gpt-3.5-turbo-16k",  # Versão com contexto maior
-                "gpt-4-32k",          # GPT-4 com contexto de 32k tokens
-            ],
-            index=0,  # Default para o modelo mais econômico
-            help="Selecione o modelo da OpenAI. GPT-3.5 é mais rápido e econômico, GPT-4 é mais preciso, modelos com número maior suportam mais contexto."
+            options=model_options,
+            index=model_index,
+            format_func=lambda x: f"{x} - {OPENAI_MODELS[x]['description']}",
+            help="Selecione o modelo da OpenAI para consultas. GPT-4o é recomendado para a melhor qualidade."
         )
+        
+        # Mostrar detalhes do modelo selecionado
+        with st.expander("Detalhes do modelo selecionado"):
+            st.write(f"**Modelo:** {model}")
+            st.write(f"**Descrição:** {OPENAI_MODELS[model]['description']}")
+            st.write(f"**Limite de tokens:** {OPENAI_MODELS[model]['max_tokens']}")
+            st.write(f"**Temperatura padrão:** {OPENAI_MODELS[model]['temperature']}")
+            st.write("**Custo relativo:** " + ("$" if "3.5" in model else "$" if "4o-mini" in model else "$$" if "4-turbo" in model else "$$"))
         
         # Atualizar o modelo selecionado
         if model != st.session_state.model:
             st.session_state.model = model
-            st.info(f"Modelo alterado para {model}")
+            st.success(f"Modelo alterado para {model}")
+        
+        # Personalidade do Oráculo
+        st.divider()
+        st.subheader("🧙 Personalidade do Oráculo")
+        
+        personality_options = list(ORACLE_PERSONALITIES.keys())
+        personality_index = personality_options.index(st.session_state.oracle_personality) if st.session_state.oracle_personality in personality_options else 0
+        
+        personality = st.selectbox(
+            "Escolha a personalidade do Oráculo:",
+            options=personality_options,
+            index=personality_index,
+            format_func=lambda x: f"{ORACLE_PERSONALITIES[x]['icon']} {ORACLE_PERSONALITIES[x]['name']}",
+            help="Selecione o estilo de comunicação que o Oráculo usará para responder às consultas."
+        )
+        
+        # Mostrar exemplo da personalidade
+        with st.expander("Ver exemplo desta personalidade"):
+            persona_info = ORACLE_PERSONALITIES[personality]
+            st.markdown(f"**{persona_info['icon']} {persona_info['name']}**")
+            # Extrair algumas linhas do prompt como exemplo
+            prompt_lines = persona_info['prompt'].strip().split('\n')
+            example_lines = [line for line in prompt_lines if 'Use frases como' in line]
+            if example_lines:
+                st.markdown(example_lines[0])
+            else:
+                st.markdown(prompt_lines[3] if len(prompt_lines) > 3 else prompt_lines[0])
+        
+        # Atualizar a personalidade selecionada
+        if personality != st.session_state.oracle_personality:
+            st.session_state.oracle_personality = personality
+            st.success(f"Personalidade alterada para {ORACLE_PERSONALITIES[personality]['name']}")
+        
+        # Adicionar opção para personalização avançada
+        st.divider()
+        with st.expander("⚡ Personalização avançada"):
+            # Ajuste de temperatura
+            current_temp = OPENAI_MODELS[st.session_state.model]["temperature"]
+            new_temp = st.slider(
+                "Temperatura da IA:",
+                min_value=0.0,
+                max_value=1.0,
+                value=current_temp,
+                step=0.1,
+                help="Valores mais baixos: respostas mais consistentes. Valores mais altos: respostas mais criativas."
+            )
+            
+            if new_temp != current_temp:
+                OPENAI_MODELS[st.session_state.model]["temperature"] = new_temp
+                st.success(f"Temperatura ajustada para {new_temp}")
+            
+            # Personalização de prompt
+            custom_prompt = st.text_area(
+                "Personalização do prompt do sistema (opcional):",
+                placeholder="Digite instruções adicionais para o modelo, se desejar...",
+                help="Adicione instruções específicas para personalizar ainda mais o comportamento do modelo."
+            )
+            
+            if custom_prompt:
+                if "custom_prompt" not in st.session_state or st.session_state.custom_prompt != custom_prompt:
+                    st.session_state.custom_prompt = custom_prompt
+                    st.success("Prompt personalizado salvo!")
         
         # Botão para exportar histórico
         st.divider()
@@ -450,54 +727,64 @@ with st.sidebar:
         st.subheader("🔍 Depuração")
         if st.button("Visualizar Texto Extraído"):
             show_extracted_text()
-
-# Conteúdo principal - Sempre exibir, independente da validação
-st.write("Digite sua pergunta sobre veículos e clique em 'Consultar'.")
-
-# Campo de consulta
-query = st.text_input("❓ Sua pergunta:", key="query_input")
-
-# Status do processamento
-if st.session_state.processing_status:
-    st.info(st.session_state.processing_status)
-
-# Inicializar o RAG engine se o ambiente estiver validado
-if VALIDATION_OK and "pdf_text" in st.session_state and st.session_state.pdf_text and st.session_state.rag_engine is None:
-    st.info("Inicializando sistema RAG para processamento eficiente de documentos grandes...")
-    initialize_rag_engine()
-
-# Botão de consulta
-consult_button = st.button("🔍 Consultar", key="query_button", disabled=not VALIDATION_OK)
-if consult_button and query:
-    st.session_state.processing_status = "Iniciando processamento com RAG..."
-    with st.spinner("Processando consulta..."):
-        answer = query_ai(query)
-        
-        if answer:
-            st.divider()
-            st.subheader("📝 Resposta:")
-            st.markdown(answer)
             
-            # Adicionar ao histórico com timestamp
-            st.session_state.history.append({
-                "query": query,
-                "answer": answer,
-                "model": st.session_state.model,
-                "timestamp": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-            })
+        # Sobre o aplicativo
+        st.divider()
+        st.subheader("ℹ️ Sobre o Oráculo")
+        with st.expander("Informações sobre esta aplicação"):
+            st.markdown("""
+            **Oráculo** é um sistema avançado de consulta a documentos usando técnicas de IA e RAG (Retrieval Augmented Generation).
             
-            # Resetar status após conclusão
-            st.session_state.processing_status = None
+            **Recursos:**
+            - Processamento inteligente de PDFs
+            - Sistema de busca vetorial para documentos extensos
+            - Múltiplos modelos OpenAI, incluindo GPT-4o
+            - Interface imersiva com personalidades do Oráculo
+            - Exportação de histórico de consultas para análise
+            
+            **Versão:** 2.0 (Atualizado em Maio 2025)
+            """)
 
-# Histórico de consultas - sempre mostrar se houver itens
-if st.session_state.history:
-    st.divider()
-    st.subheader("📋 Histórico de Consultas")
+# Verificar se há uma consulta armazenada ao recarregar a página
+if "last_query" in st.session_state and st.session_state.last_query:
+    st.session_state.query_input = st.session_state.last_query
+    st.session_state.last_query = ""
+
+# Criar função para atualização em tempo real (opcional)
+def schedule_rerun():
+    """Programa uma reexecução da aplicação após 60 segundos"""
+    import time
+    import streamlit as st
     
-    for i, item in enumerate(reversed(st.session_state.history)):
-        question = item.get("query", "")
-        with st.expander(f"Pergunta ({i+1}): {question}"):
-            st.markdown(f"**Data e Hora:** {item.get('timestamp', '')}")
-            st.markdown(f"**Modelo:** {item.get('model', '')}")
-            st.markdown("**Resposta:**")
-            st.markdown(item.get('answer', ''))
+    time.sleep(60)
+    st.rerun()
+
+# Comentar/descomentar a linha abaixo para habilitar atualizações automáticas
+# st.cache_resource.clear()
+
+# Adicionar footer personalizado
+st.markdown("""
+<div style="position: fixed; bottom: 0; left: 0; width: 100%; background-color: rgba(15, 32, 39, 0.9); 
+            padding: 10px; text-align: center; font-size: 0.8em; color: rgba(255, 255, 255, 0.7);">
+    Desenvolvido com 💫 tecnologia avançada | O Oráculo está em constante evolução | 2025
+</div>
+""", unsafe_allow_html=True)
+
+# Adicionar scripts JavaScript para animações avançadas (opcional)
+st.markdown("""
+<script>
+    // Animação sutil para botões e elementos do Oráculo
+    document.addEventListener('DOMContentLoaded', function() {
+        // Adicionar efeitos de brilho aos botões
+        const buttons = document.querySelectorAll('button');
+        buttons.forEach(button => {
+            button.addEventListener('mouseover', function() {
+                this.style.boxShadow = '0 0 15px rgba(123, 104, 238, 0.7)';
+            });
+            button.addEventListener('mouseout', function() {
+                this.style.boxShadow = 'none';
+            });
+        });
+    });
+</script>
+""", unsafe_allow_html=True)
