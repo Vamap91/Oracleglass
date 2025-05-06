@@ -1195,207 +1195,698 @@ IMPORTANTE: Responda APENAS com base nas informações contidas nesses trechos. 
         categories = Counter(chunk["category"] for chunk in self.chunks)
         
         # Contar entidades
-        entity_counts = Counter()
-        for chunk in self.chunks:
+        entity_counts = Counter
+
+        # Criar chunk com alta prioridade
+            chunk = self.create_chunk_object(
+                content=content,
+                title=f"FAQ: {faq_data['original']}",
+                category="faq",
+                entities=faq_data['entities']
+            )
+            
+            # Aumentar prioridade para FAQs
+            chunk["priority"] = 100
+            
+            # Adicionar metadados específicos para busca
+            chunk["faq_id"] = faq_id
+            chunk["faq_categories"] = faq_data['categories']
+            chunk["faq_terms"] = faq_data['important_terms']
+            
+            # Adicionar aos chunks
+            self.chunks.append(chunk)
+            chunk_index = len(self.chunks) - 1
+            
+            # Indexar por ID de FAQ
+            self.faq_chunks[faq_id].append(chunk_index)
+            
+            # Indexar por entidades
+            for entity in faq_data['entities']:
+                self.entity_chunks[entity.lower()].append(chunk_index)
+            
+            # Indexar por categorias
+            for category in faq_data['categories']:
+                self.category_chunks[category].append(chunk_index)
+            
+            # Indexar por termos importantes
+            for category, terms in faq_data['important_terms'].items():
+                for term in terms:
+                    self.term_chunks[term].append(chunk_index)
+    
+    def create_semantic_chunks(self, sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Cria chunks semânticos baseados nas seções extraídas.
+        """
+        chunks = []
+        
+        # 1. Criar chunks para cada seção
+        for section in sections:
+            content = section["content"]
+            category = section["category"]
+            title = section["title"]
+            
+            # Se o conteúdo for muito grande, dividi-lo em partes menores
+            if len(content) > 1000:
+                # Dividir por parágrafos
+                paragraphs = [p for p in re.split(r'\n\s*\n', content) if p.strip()]
+                
+                # Se não houver parágrafos claros, dividir por linhas
+                if not paragraphs or len(paragraphs) == 1:
+                    paragraphs = [p for p in content.split('\n') if p.strip()]
+                
+                # Criar chunks a partir dos parágrafos
+                current_chunk = title + "\n"
+                for para in paragraphs:
+                    if len(current_chunk) + len(para) <= 1000:
+                        current_chunk += para + "\n\n"
+                    else:
+                        # Finalizar chunk atual
+                        chunk = self.create_chunk_object(current_chunk, title, category, section["entities"])
+                        chunks.append(chunk)
+                        
+                        # Iniciar novo chunk
+                        current_chunk = title + "\n" + para + "\n\n"
+                
+                # Adicionar último chunk se não estiver vazio
+                if current_chunk.strip() != title:
+                    chunk = self.create_chunk_object(current_chunk, title, category, section["entities"])
+                    chunks.append(chunk)
+            else:
+                # Para seções menores, criar um único chunk
+                chunk = self.create_chunk_object(content, title, category, section["entities"])
+                chunks.append(chunk)
+        
+        # 2. Criar chunks especiais para entidades
+        for entity_name, entity_info in self.entities.items():
+            # Chunk com todas as informações da entidade
+            entity_content = f"{entity_info['name'].upper()}\n"
+            
+            if entity_info["telefones"]:
+                entity_content += f"Telefone(s): {', '.join(entity_info['telefones'])}\n"
+            
+            if entity_info["responsavel"]:
+                entity_content += f"Responsável: {entity_info['responsavel']}\n"
+            
+            if entity_info["fluxo"]:
+                entity_content += f"Fluxo de Atendimento: {entity_info['fluxo']}\n"
+            
+            if entity_info["cobertura"]:
+                entity_content += f"Coberturas: {', '.join(entity_info['cobertura'])}\n"
+            
+            # Adicionar contexto completo
+            entity_content += f"\nContexto completo:\n{entity_info['context']}"
+            
+            # Criar chunk da entidade
+            chunk = self.create_chunk_object(
+                entity_content, 
+                entity_info['name'].upper(), 
+                "entidade", 
+                [entity_info['name']]
+            )
+            
+            # Definir alta prioridade para chunks de entidade
+            chunk["priority"] = 10
+            chunks.append(chunk)
+            
+            # Chunks específicos para telefone e responsável
+            if entity_info["telefones"]:
+                tel_content = f"{entity_info['name'].upper()}\nTelefone(s): {', '.join(entity_info['telefones'])}"
+                tel_chunk = self.create_chunk_object(tel_content, "TELEFONE", "telefone", [entity_info['name']])
+                tel_chunk["priority"] = 20  # Prioridade ainda maior para informações críticas
+                chunks.append(tel_chunk)
+            
+            if entity_info["responsavel"]:
+                resp_content = f"{entity_info['name'].upper()}\nResponsável: {entity_info['responsavel']}"
+                resp_chunk = self.create_chunk_object(resp_content, "RESPONSÁVEL", "responsavel", [entity_info['name']])
+                resp_chunk["priority"] = 20
+                chunks.append(resp_chunk)
+        
+        # 3. Indexar chunks por entidade e categoria para pesquisa mais eficiente
+        for i, chunk in enumerate(chunks):
+            # Indexar por entidade
             for entity in chunk["entities"]:
-                entity_counts[entity] += 1
+                self.entity_chunks[entity.lower()].append(i)
+            
+            # Indexar por categoria
+            self.category_chunks[chunk["category"]].append(i)
+            
+            # Indexar por termos importantes
+            for term_category, count in chunk.get("important_matches", {}).items():
+                for term in self.important_terms.get(term_category, []):
+                    if term in chunk["text"].lower():
+                        self.term_chunks[term].append(i)
         
-        # Estatísticas de prioridade
-        priorities = [chunk["priority"] for chunk in self.chunks]
+        return chunks
+    
+    def create_chunk_object(self, content: str, title: str, category: str, entities: List[str]) -> Dict[str, Any]:
+        """
+        Cria um objeto de chunk estruturado com metadados.
+        """
+        # Tokenizar para análise semântica
+        tokens = self.tokenize_text(content)
         
-        # Estatísticas de FAQs
-        faq_chunks = [chunk for chunk in self.chunks if chunk.get("category") == "faq"]
+        # Calcular frequência de termos
+        term_freq = Counter(tokens)
+        
+        # Verificar correspondência com termos importantes
+        important_matches = {}
+        for term_category, terms in self.important_terms.items():
+            for term in terms:
+                if term in content.lower():
+                    if term_category not in important_matches:
+                        important_matches[term_category] = 0
+                    important_matches[term_category] += 1
+        
+        # Criar objeto de chunk
+        chunk = {
+            "text": content,
+            "title": title,
+            "category": category,
+            "entities": entities,
+            "tokens": tokens,
+            "term_freq": term_freq,
+            "important_matches": important_matches,
+            "priority": 5  # Prioridade padrão
+        }
+        
+        # Ajustar prioridade com base na categoria
+        if category in ["telefone", "responsavel", "undercar"]:
+            chunk["priority"] += 3
+        
+        # Prioridades por tipo de categoria
+        category_priorities = {
+            "vidros": 8,
+            "acessorios": 8,
+            "rr": 7,
+            "sm": 7,
+            "rrsm": 7,
+            "limite": 6,
+            "prazo": 6,
+            "garantia": 6,
+            "franquia": 7,
+            "reembolso": 8,
+            "procedimento": 9,
+            "faq": 100  # Máxima prioridade para FAQs
+        }
+        
+        # Aplicar prioridade baseada na categoria
+        if category in category_priorities:
+            chunk["priority"] = max(chunk["priority"], category_priorities[category])
+        
+        # Ajustar prioridade com base em correspondências importantes
+        if len(important_matches) > 2:
+            chunk["priority"] += 2
+        
+        # Aumentar prioridade se tiver termos relacionados a perguntas frequentes
+        faq_terms = ["como", "procedimento", "limite", "prazo", "valor", "cobre", "atende"]
+        faq_term_count = sum(1 for term in faq_terms if term in content.lower())
+        if faq_term_count >= 2:
+            chunk["priority"] += faq_term_count
+        
+        return chunk
+    
+    def preprocess_text(self, text: str) -> None:
+        """
+        Realiza o pré-processamento completo do texto do documento.
+        """
+        # 1. Extrair entidades (seguradoras/assistências)
+        self.entities = self.extract_entities(text)
+        print(f"Extraídas {len(self.entities)} entidades do documento")
+        
+        # 2. Extrair seções semânticas
+        sections = self.extract_sections(text)
+        print(f"Extraídas {len(sections)} seções do documento")
+        
+        # 3. Criar chunks semânticos
+        self.chunks = self.create_semantic_chunks(sections)
+        print(f"Criados {len(self.chunks)} chunks semânticos")
+        
+        # 4. Salvar resultados
+        with open(self.chunks_path, 'wb') as f:
+            pickle.dump({
+                "chunks": self.chunks,
+                "entity_chunks": dict(self.entity_chunks),
+                "category_chunks": dict(self.category_chunks),
+                "term_chunks": dict(self.term_chunks),
+                "faq_chunks": dict(self.faq_chunks)
+            }, f)
+        
+        with open(self.entities_path, 'wb') as f:
+            pickle.dump(self.entities, f)
+        
+        # 5. Salvar FAQs processadas, se houver
+        if self.processed_faqs:
+            with open(self.faq_path, 'wb') as f:
+                pickle.dump({
+                    "processed_faqs": self.processed_faqs,
+                    "faq_vectors": self.faq_vectors
+                }, f)
+        
+        print(f"Índices e chunks salvos com sucesso!")
+    
+    def create_index(self, text: str, faq_questions: List[str] = None) -> bool:
+        """
+        Cria índices a partir do texto do documento e perguntas frequentes.
+        
+        Args:
+            text: Texto do documento
+            faq_questions: Lista opcional de perguntas frequentes
+            
+        Returns:
+            bool: True se índice criado com sucesso
+        """
+        # Processar perguntas frequentes, se fornecidas
+        if faq_questions:
+            print(f"Processando {len(faq_questions)} perguntas frequentes")
+            self.processed_faqs = self.process_faq_questions(faq_questions)
+        
+        # Realizar pré-processamento do documento
+        self.preprocess_text(text)
+        
+        # Criar chunks específicos para FAQs
+        if self.processed_faqs:
+            print("Criando chunks especializados para FAQs")
+            self.create_faq_chunks()
+            
+            # Salvar índices atualizados com FAQs
+            with open(self.chunks_path, 'wb') as f:
+                pickle.dump({
+                    "chunks": self.chunks,
+                    "entity_chunks": dict(self.entity_chunks),
+                    "category_chunks": dict(self.category_chunks),
+                    "term_chunks": dict(self.term_chunks),
+                    "faq_chunks": dict(self.faq_chunks)
+                }, f)
+        
+        return True
+    
+    def load_index(self) -> bool:
+        """
+        Carrega índices e chunks salvos.
+        """
+        try:
+            if os.path.exists(self.chunks_path) and os.path.exists(self.entities_path):
+                # Carregar chunks e índices
+                with open(self.chunks_path, 'rb') as f:
+                    data = pickle.load(f)
+                    self.chunks = data["chunks"]
+                    self.entity_chunks = defaultdict(list, data["entity_chunks"])
+                    self.category_chunks = defaultdict(list, data["category_chunks"])
+                    
+                    # Carregar índices adicionais se disponíveis
+                    if "term_chunks" in data:
+                        self.term_chunks = defaultdict(list, data["term_chunks"])
+                    if "faq_chunks" in data:
+                        self.faq_chunks = defaultdict(list, data["faq_chunks"])
+                
+                # Carregar entidades
+                with open(self.entities_path, 'rb') as f:
+                    self.entities = pickle.load(f)
+                
+                # Carregar FAQs, se disponíveis
+                if os.path.exists(self.faq_path):
+                    with open(self.faq_path, 'rb') as f:
+                        faq_data = pickle.load(f)
+                        self.processed_faqs = faq_data.get("processed_faqs", {})
+                        self.faq_vectors = faq_data.get("faq_vectors", {})
+                
+                print(f"Carregados {len(self.chunks)} chunks e {len(self.entities)} entidades")
+                if self.processed_faqs:
+                    print(f"Carregadas {len(self.processed_faqs)} perguntas frequentes")
+                
+                return True
+            return False
+        except Exception as e:
+            print(f"Erro ao carregar índice: {e}")
+            return False
+    
+    def classify_query(self, query: str) -> Dict[str, Any]:
+        """
+        Classifica a consulta para direcionar a busca.
+        """
+        query_lower = query.lower()
+        
+        # 1. Detectar entidades mencionadas
+        detected_entities = []
+        for entity in self.known_entities:
+            if entity.lower() in query_lower:
+                detected_entities.append(entity.lower())
+        
+        # Buscar por entidades desconhecidas também
+        for entity_name in self.entities.keys():
+            if entity_name.lower() in query_lower and entity_name.lower() not in detected_entities:
+                detected_entities.append(entity_name.lower())
+        
+        # 2. Classificar tipo de consulta
+        query_type = "geral"
+        for q_type, keywords in self.query_types.items():
+            if any(keyword in query_lower for keyword in keywords):
+                query_type = q_type
+                break
+        
+        # 3. Detectar termos importantes
+        important_categories = []
+        for category, terms in self.important_terms.items():
+            if any(term in query_lower for term in terms):
+                important_categories.append(category)
+        
+        # 4. Verificar menção específica a "undercar"
+        has_undercar = "undercar" in query_lower or any(term in query_lower for term in self.important_terms["undercar"])
+        
+        # 5. Verificar correspondência com padrões de FAQ
+        faq_matches = []
+        for faq_id, patterns in self.faq_patterns.items():
+            for pattern in patterns:
+                if re.search(pattern, query_lower):
+                    faq_matches.append(faq_id)
+                    break
         
         return {
-            "total_chunks": len(self.chunks),
-            "categories": dict(categories),
-            "entities": dict(entity_counts.most_common(10)),
-            "priorities": {
-                "min": min(priorities) if priorities else 0,
-                "max": max(priorities) if priorities else 0,
-                "avg": sum(priorities)/len(priorities) if priorities else 0
-            },
-            "total_entities": len(self.entities),
-            "faq_chunks": len(faq_chunks),
-            "term_indexed_chunks": len(self.term_chunks)
+            "entities": detected_entities,
+            "type": query_type,
+            "important_categories": important_categories,
+            "has_undercar": has_undercar,
+            "faq_matches": faq_matches
         }
     
-    def load_faq_list(self, faq_list_path: str) -> bool:
+    def expand_query(self, query: str) -> Set[str]:
         """
-        Carrega uma lista de perguntas frequentes a partir de um arquivo e
-        as processa para melhorar a busca.
+        Expande a consulta com termos relacionados.
+        """
+        query_lower = query.lower()
+        expanded_terms = set(self.tokenize_text(query_lower))
         
-        Args:
-            faq_list_path: Caminho para o arquivo com a lista de perguntas
-            
-        Returns:
-            bool: True se carregado com sucesso
-        """
-        try:
-            # Tentar carregar como arquivo de texto
-            with open(faq_list_path, 'r', encoding='utf-8') as f:
-                questions = [line.strip() for line in f if line.strip()]
-            
-            # Processar as perguntas
-            if questions:
-                self.processed_faqs = self.process_faq_questions(questions)
-                
-                # Criar chunks para as perguntas processadas
-                if self.chunks:  # Se já temos chunks carregados
-                    self.create_faq_chunks()
-                    
-                    # Salvar dados atualizados
-                    with open(self.faq_path, 'wb') as f:
-                        pickle.dump({
-                            "processed_faqs": self.processed_faqs,
-                            "faq_vectors": self.faq_vectors
-                        }, f)
-                
-                print(f"Carregadas e processadas {len(questions)} perguntas frequentes")
-                return True
-                
-            return False
-        except Exception as e:
-            print(f"Erro ao carregar lista de FAQs: {e}")
-            return False
+        # Adicionar sinônimos e termos relacionados
+        for term in list(expanded_terms):
+            for category, terms in self.important_terms.items():
+                if term in terms:
+                    expanded_terms.update(terms)
+        
+        # Adicionar termos importantes se mencionados na consulta
+        for category, terms in self.important_terms.items():
+            if any(term in query_lower for term in terms):
+                expanded_terms.update(terms)
+        
+        # Adicionar variações específicas para termos técnicos
+        term_variations = {
+            "parabrisa": ["para-brisa", "para brisa"],
+            "para-brisa": ["parabrisa", "para brisa"],
+            "para brisa": ["parabrisa", "para-brisa"],
+            "reparo rapido": ["reparo rápido", "rr"],
+            "reparo rápido": ["reparo rapido", "rr"],
+            "rr": ["reparo rápido", "reparo rapido"],
+            "supermartelinho": ["super martelinho", "sm"],
+            "super martelinho": ["supermartelinho", "sm"],
+            "sm": ["super martelinho", "supermartelinho"],
+            "vidros": ["parabrisa", "para-brisa", "vigia", "vidro"],
+            "acessorios": ["acessórios", "farol", "lanterna"],
+            "acessórios": ["acessorios", "farol", "lanterna"],
+            "parachoque": ["para-choque", "para choque"],
+            "para-choque": ["parachoque", "para choque"],
+            "para choque": ["parachoque", "para-choque"]
+        }
+        
+        # Adicionar variações específicas para os termos da consulta
+        for term in list(expanded_terms):
+            if term in term_variations:
+                expanded_terms.update(term_variations[term])
+        
+        return expanded_terms
     
-    def optimize_for_faq_list(self, faq_list: List[str]) -> bool:
+    def search(self, query: str, top_k: int = 7) -> List[Tuple[int, str, float]]:
         """
-        Otimiza o motor RAG para uma lista específica de perguntas frequentes.
-        
-        Args:
-            faq_list: Lista de perguntas frequentes
-            
-        Returns:
-            bool: True se otimizado com sucesso
+        Realiza busca semântica guiada por entidades e categorias,
+        com suporte especial para perguntas frequentes.
         """
-        try:
-            # Processar as perguntas
-            if faq_list:
-                print(f"Otimizando RAG para {len(faq_list)} perguntas frequentes")
-                self.processed_faqs = self.process_faq_questions(faq_list)
-                
-                # Criar chunks para as perguntas processadas se temos chunks carregados
-                if self.chunks:
-                    print("Criando chunks especializados para FAQs")
-                    
-                    # Backup dos chunks atuais
-                    original_chunks_count = len(self.chunks)
-                    
-                    # Criar chunks de FAQ
-                    self.create_faq_chunks()
-                    
-                    # Verificar quantos novos chunks foram criados
-                    new_chunks_count = len(self.chunks) - original_chunks_count
-                    print(f"Criados {new_chunks_count} novos chunks para FAQs")
-                    
-                    # Salvar índices atualizados
-                    with open(self.chunks_path, 'wb') as f:
-                        pickle.dump({
-                            "chunks": self.chunks,
-                            "entity_chunks": dict(self.entity_chunks),
-                            "category_chunks": dict(self.category_chunks),
-                            "term_chunks": dict(self.term_chunks),
-                            "faq_chunks": dict(self.faq_chunks)
-                        }, f)
-                    
-                    # Salvar FAQs processadas
-                    with open(self.faq_path, 'wb') as f:
-                        pickle.dump({
-                            "processed_faqs": self.processed_faqs,
-                            "faq_vectors": self.faq_vectors
-                        }, f)
-                    
-                    return True
-                else:
-                    print("Aviso: Nenhum chunk carregado. Carregue o índice primeiro.")
-                    return False
-            
-            return False
-        except Exception as e:
-            print(f"Erro ao otimizar para FAQs: {e}")
-            return False
-    
-    def search_faq(self, query: str, top_k: int = 3) -> List[Tuple[str, float]]:
-        """
-        Busca perguntas frequentes semelhantes à consulta.
+        if not self.chunks:
+            raise ValueError("Os chunks não foram carregados")
         
-        Args:
-            query: Consulta do usuário
-            top_k: Número de resultados a retornar
-            
-        Returns:
-            Lista de tuplas (pergunta, pontuação)
-        """
-        if not self.processed_faqs:
-            return []
-        
-        # Normalizar e tokenizar a consulta
-        query_normalized = self.normalize_text(query)
-        query_tokens = set(self.tokenize_text(query))
-        
-        # Classificar a consulta
+        # 1. Classificar e expandir a consulta
         query_info = self.classify_query(query)
+        expanded_terms = self.expand_query(query)
         
-        # Calcular similaridade para cada FAQ
-        similarities = []
+        # 2. Busca especial para correspondências diretas com FAQ
+        if query_info["faq_matches"]:
+            faq_candidates = set()
+            for faq_id in query_info["faq_matches"]:
+                # Adicionar chunks de FAQ correspondentes
+                for chunk_id in self.faq_chunks.get(faq_id, []):
+                    faq_candidates.add(chunk_id)
+                
+                # Verificar nos processed_faqs também
+                for proc_faq_id, faq_data in self.processed_faqs.items():
+                    if faq_id in faq_data.get("faq_matches", []):
+                        # Adicionar chunks de FAQ correspondentes
+                        for chunk_id in self.faq_chunks.get(proc_faq_id, []):
+                            faq_candidates.add(chunk_id)
+            
+            # Se encontramos candidatos diretos, criar uma lista de resultados de alta prioridade
+            if faq_candidates:
+                faq_results = []
+                for idx in faq_candidates:
+                    chunk = self.chunks[idx]
+                    score = 100  # Pontuação máxima para correspondências diretas de FAQ
+                    faq_results.append((idx, chunk["text"], score))
+                
+                # Ordenar por relevância e retornar os top_k
+                faq_results.sort(key=lambda x: x[2], reverse=True)
+                return faq_results[:top_k]
         
-        for faq_id, faq_data in self.processed_faqs.items():
-            # Inicializar pontuação
+        # 3. Preparar conjuntos de chunks a considerar (busca normal)
+        candidate_chunks = set()
+        
+        # 3.1 Priorizar chunks relacionados às entidades detectadas
+        for entity in query_info["entities"]:
+            candidate_chunks.update(self.entity_chunks.get(entity.lower(), []))
+        
+        # 3.2 Considerar chunks de categorias importantes
+        if query_info["important_categories"]:
+            for category in query_info["important_categories"]:
+                candidate_chunks.update(self.category_chunks.get(category, []))
+        
+        # 3.3 Busca especial para undercar
+        if query_info["has_undercar"]:
+            candidate_chunks.update(self.category_chunks.get("undercar", []))
+        
+        # 3.4 Adicionar chunks associados a termos específicos
+        for term in expanded_terms:
+            candidate_chunks.update(self.term_chunks.get(term, []))
+        
+        # 3.5 Se não houver candidatos específicos, considerar todos os chunks
+        if not candidate_chunks:
+            candidate_chunks = set(range(len(self.chunks)))
+        
+        # 4. Pontuar chunks candidatos
+        chunk_scores = []
+        
+        for idx in candidate_chunks:
+            chunk = self.chunks[idx]
             score = 0
             
-            # Similaridade de tokens (quanto maior a interseção, maior a pontuação)
-            faq_tokens = set(faq_data["tokens"])
-            token_overlap = len(query_tokens & faq_tokens)
-            if token_overlap > 0:
-                score += token_overlap * 3
+            # 4.1 Pontuação base da prioridade do chunk
+            score += chunk["priority"]
             
-            # Verificar correspondência com entidades
-            entity_matches = set(query_info["entities"]) & set(faq_data["entities"])
-            if entity_matches:
-                score += len(entity_matches) * 10
+            # 4.2 Bônus para chunks de FAQ - máxima prioridade
+            if chunk.get("category") == "faq":
+                score += 50
             
-            # Verificar correspondência com categorias
-            category_matches = set(query_info["important_categories"]) & set(faq_data["categories"])
-            if category_matches:
-                score += len(category_matches) * 5
+            # 4.3 Pontuação por correspondência de termos
+            for term in expanded_terms:
+                if term in chunk["tokens"]:
+                    # Peso maior para termos da consulta original
+                    weight = 3 if term in query.lower() else 1
+                    score += chunk["term_freq"].get(term, 0) * weight
             
-            # Correspondência com padrões de FAQ
-            faq_pattern_matches = set(query_info["faq_matches"]) & set(faq_data.get("faq_matches", []))
-            if faq_pattern_matches:
-                score += len(faq_pattern_matches) * 15
+            # 4.4 Pontuação adicional para correspondências importantes
+            for category, count in chunk["important_matches"].items():
+                if category in query_info["important_categories"]:
+                    score += count * 5
             
-            # Verificar se a consulta contém a pergunta ou vice-versa
-            if query_normalized in faq_data["normalized"] or faq_data["normalized"] in query_normalized:
-                score += 20
+            # 4.5 Bônus para chunks que mencionam entidades da consulta
+            for entity in query_info["entities"]:
+                if entity in [e.lower() for e in chunk["entities"]]:
+                    score += 15
             
-            # Adicionar à lista se tiver pontuação positiva
+            # 4.6 Bônus especial para undercar se mencionado
+            if query_info["has_undercar"] and "undercar" in chunk["text"].lower():
+                score += 25
+            
+            # 4.7 Bônus para chunks que contêm palavras exatas da consulta
+            query_tokens = self.tokenize_text(query)
+            exact_matches = sum(1 for token in query_tokens if token in chunk["tokens"])
+            score += exact_matches * 3
+            
+            # Adicionar à lista de resultados se tiver pontuação positiva
             if score > 0:
-                similarities.append((faq_data["original"], score))
+                chunk_scores.append((idx, chunk["text"], score))
         
-        # Ordenar por relevância
-        similarities.sort(key=lambda x: x[1], reverse=True)
+        # 5. Se não encontrou nada relevante, usar busca de fallback
+        if not chunk_scores:
+            # Buscar em todos os chunks pela correspondência simples de palavras
+            for i, chunk in enumerate(self.chunks):
+                score = 0
+                chunk_text = chunk["text"].lower()
+                
+                # Verificar correspondência de termos expandidos
+                for term in expanded_terms:
+                    if term in chunk_text:
+                        score += 1
+                
+                # Priorizar chunks de categorias específicas
+                if chunk["category"] in ["telefone", "responsavel", "undercar", "fluxo", "vidros", "limite", "prazo"]:
+                    score += 2
+                
+                if score > 0:
+                    chunk_scores.append((i, chunk["text"], score))
         
-        # Retornar os top_k mais relevantes
-        return similarities[:top_k]
+        # 6. Se ainda não encontrou nada, pegar chunks com prioridades maiores
+        if not chunk_scores:
+            high_priority_chunks = [(i, chunk["text"], chunk["priority"]) 
+                                   for i, chunk in enumerate(self.chunks) 
+                                   if chunk["priority"] >= 5]
+            chunk_scores.extend(high_priority_chunks[:top_k])
+        
+        # 7. Ordenar por relevância
+        chunk_scores.sort(key=lambda x: x[2], reverse=True)
+        
+        # 8. Remover duplicatas mantendo a ordem
+        seen = set()
+        unique_chunks = []
+        for idx, text, score in chunk_scores:
+            normalized_text = text[:100]  # Usar início do texto para comparação
+            if normalized_text not in seen:
+                seen.add(normalized_text)
+                unique_chunks.append((idx, text, score))
+        
+        # 9. Retornar os top_k mais relevantes
+        return unique_chunks[:top_k]
     
-    def suggest_related_questions(self, query: str, top_k: int = 3) -> List[str]:
+    def query_with_context(self, client, query: str, model: str, system_prompt: str, temperature: float = 0.2, top_k: int = 7) -> str:
         """
-        Sugere perguntas relacionadas com base na consulta do usuário.
+        Processa consulta com contexto enriquecido baseado na classificação.
         
         Args:
-            query: Consulta do usuário
-            top_k: Número de sugestões a retornar
+            client: Cliente OpenAI
+            query: A consulta do usuário
+            model: Modelo a ser usado
+            system_prompt: Prompt de sistema para instruir o modelo
+            temperature: Temperatura para controlar aleatoriedade das respostas (0.0 a 1.0)
+            top_k: Número de chunks relevantes a recuperar
             
         Returns:
-            Lista de perguntas sugeridas
+            str: Resposta gerada pelo modelo
         """
-        # Buscar perguntas frequentes relacionadas
-        related_faqs = self.search_faq(query, top_k=top_k)
+        # 1. Classificar a consulta
+        query_info = self.classify_query(query)
         
-        # Extrair apenas as perguntas
-        suggested_questions = [faq for faq, _ in related_faqs]
+        # 2. Buscar chunks relevantes
+        relevant_chunks = self.search(query, top_k)
         
-        return suggested_questions
+        # 3. Verificar se temos resultados relevantes
+        if not relevant_chunks:
+            return f"Não foi possível encontrar informações específicas sobre '{query}' no documento fornecido."
+        
+        # 4. Preparar contexto
+        context_parts = []
+        
+        # 4.1 Adicionar seções especiais prioritárias
+        if query_info["entities"]:
+            entity_str = ", ".join(query_info["entities"])
+            context_parts.append(f"ENTIDADES MENCIONADAS: {entity_str}")
+        
+        if query_info["has_undercar"]:
+            for idx, text, score in relevant_chunks:
+                if "undercar" in text.lower():
+                    context_parts.append(f"INFORMAÇÃO ESPECÍFICA DE UNDERCAR:\n{text}")
+        
+        # 4.2 Priorizar chunks de FAQ se corresponderem diretamente
+        faq_chunks = []
+        for idx, text, score in relevant_chunks:
+            chunk = self.chunks[idx]
+            if chunk.get("category") == "faq" or "FAQ" in chunk.get("title", ""):
+                faq_chunks.append((idx, text, score))
+                # Evitar duplicação deste chunk mais tarde
+                context_parts.append(f"PERGUNTA FREQUENTE RELEVANTE:\n{text}")
+        
+        # 4.3 Adicionar chunks relevantes em ordem de pontuação, evitando duplicação
+        for idx, text, score in relevant_chunks:
+            chunk = self.chunks[idx]
+            # Evitar duplicação
+            if not any(text in part for part in context_parts):
+                prefix = ""
+                if chunk["title"]:
+                    prefix = f"SEÇÃO: {chunk['title']}\n"
+                
+                # Adicionar metadados para melhorar contexto
+                if chunk.get("category") in ["vidros", "acessorios", "limite", "prazo", "garantia"]:
+                    prefix += f"CATEGORIA: {chunk['category'].upper()}\n"
+                
+                formatted_text = f"{prefix}{text}"
+                context_parts.append(formatted_text)
+        
+        # 5. Construir o contexto final
+        context = "\n\n---\n\n".join(context_parts)
+        
+        # 6. Enriquecer o prompt do sistema para focar na consulta
+        enriched_system_prompt = system_prompt
+        
+        # 6.1 Adicionar informações sobre entidades específicas
+        if query_info["entities"]:
+            entity_str = ", ".join(query_info["entities"])
+            enriched_system_prompt += f"\n\nA consulta se refere especificamente a: {entity_str}. Priorize informações relacionadas a esta(s) entidade(s)."
+        
+        # 6.2 Adicionar informações sobre categorias importantes
+        if query_info["important_categories"]:
+            categories_str = ", ".join(query_info["important_categories"])
+            enriched_system_prompt += f"\n\nA consulta busca por informações sobre: {categories_str}. Concentre-se nessas categorias de informação."
+        
+        # 6.3 Personalização especial para perguntas frequentes
+        if query_info["faq_matches"] or faq_chunks:
+            enriched_system_prompt += f"\n\nEsta é uma pergunta frequente no sistema. Responda de forma direta e completa, fornecendo todas as informações relevantes encontradas no contexto."
+        
+        # 7. Construir prompt para a IA
+        user_prompt = f"""Com base nos trechos do documento abaixo, responda à pergunta: '{query}'
+
+Trechos do documento:
+{context}
+
+IMPORTANTE: Responda APENAS com base nas informações contidas nesses trechos. Se a informação solicitada estiver presente, forneça-a de forma clara e direta. Se não estiver presente nos trechos fornecidos, diga explicitamente que não foi possível encontrar essa informação específica no documento.
+"""
+        
+        # 8. Realizar a consulta à API
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": enriched_system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=temperature,  # Usar o parâmetro de temperatura passado
+                max_tokens=1000
+            )
+            
+            return response.choices[0].message.content
+        except Exception as e:
+            return f"Erro ao processar consulta: {str(e)}"
+    
+    def get_chunks_stats(self) -> Dict[str, Any]:
+        """
+        Retorna estatísticas sobre os chunks.
+        """
+        if not self.chunks:
+            return {"error": "Nenhum chunk disponível"}
+        
+        # Contar chunks por categoria
+        categories = Counter(chunk["category"] for chunk in self.chunks)
+        
+        # Contar entidades
+        entity_counts = Counter
+
+
+
+
+
+
+
 
 
