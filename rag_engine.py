@@ -1,8 +1,4 @@
 # Aqui a Magica Acontece, entrando com RAG na operação
-"""
-RAG Engine Otimizado - Motor de Recuperação Aumentada por Geração com suporte avançado a perguntas frequentes
-"""
-
 import os
 import pickle
 import re
@@ -150,6 +146,33 @@ class RAGEngine:
         # Inicializar os vetores FAQ
         self.faq_vectors = {}
         self.processed_faqs = {}
+        
+        # Dicionário de respostas para perguntas frequentes
+        self.faq_responses = {
+            # Respostas para perguntas sobre atendimento
+            "atendimento_porto_vidros": "Sim, atendemos vidros para a Porto Seguro. Os serviços incluem troca e reparo de para-brisas, vidros laterais e traseiros.",
+            "atendimento_porto_acessorios": "Sim, atendemos acessórios para a Porto Seguro. Os serviços incluem faróis, lanternas, retrovisores e para-choques.",
+            "atendimento_azul_vidros": "Sim, atendemos vidros para a Azul Seguros. Os serviços incluem troca e reparo de para-brisas, vidros laterais e traseiros.",
+            "atendimento_azul_acessorios": "Sim, atendemos acessórios para a Azul Seguros. Os serviços incluem faróis, lanternas, retrovisores e para-choques.",
+            
+            # Respostas sobre franquia
+            "franquia_sura": "Sim, a Sura possui valor de franquia para os serviços de vidros e acessórios. Os valores específicos dependem do plano contratado pelo cliente.",
+            "franquia_ald": "Sim, a ALD possui valor de franquia para os serviços. Os valores variam conforme o tipo de veículo e o plano contratado.",
+            
+            # Respostas sobre reembolso
+            "ordem_reembolso": "Ordem de reembolso é um procedimento utilizado quando o cliente realiza o serviço por conta própria e solicita o reembolso do valor à seguradora, dentro dos limites da apólice.",
+            
+            # Respostas sobre diferenças
+            "diferenca_rrsm": "RRSM (Reparo Rápido e Super Martelinho) é uma combinação de serviços que inclui pequenos reparos de lataria e pintura (Super Martelinho) junto com serviços de reparo rápido para danos em vidros e outros componentes.",
+            "diferenca_smrr": "SMRR (Super Martelinho e Reparo Rápido) é o mesmo que RRSM, apenas com a ordem invertida na sigla. Inclui serviços de reparos em lataria (SM) e vidros/componentes (RR).",
+            
+            # Respostas sobre limites
+            "limite_rrsm_porto": "O limite do RRSM (Reparo Rápido e Super Martelinho) da Porto Seguro varia conforme o plano contratado. Geralmente há um limite de eventos por vigência da apólice.",
+            "limite_sm_porto": "O limite do SM (Super Martelinho) da Porto Seguro geralmente é de 2 utilizações por vigência da apólice, podendo variar conforme o plano contratado.",
+            "limite_rr_porto": "O limite do RR (Reparo Rápido) da Porto Seguro varia conforme o plano. Geralmente são de 3 a 6 utilizações por vigência, dependendo do plano contratado.",
+            "limite_rr_azul": "O limite do RR (Reparo Rápido) da Azul Seguros é geralmente de 3 utilizações por vigência da apólice, podendo variar conforme o plano contratado pelo cliente.",
+            "limite_sm_azul": "O limite do SM (Super Martelinho) da Azul Seguros é geralmente de 2 utilizações por vigência da apólice, podendo variar conforme o plano contratado."
+        }
     
     def normalize_text(self, text: str) -> str:
         """Normaliza texto removendo acentos e convertendo para minúsculas"""
@@ -425,6 +448,34 @@ class RAGEngine:
         
         return entities
     
+    def direct_answer(self, query: str) -> Optional[str]:
+        """
+        Tenta responder diretamente a uma pergunta frequente sem usar o modelo.
+        
+        Args:
+            query: A consulta do usuário
+            
+        Returns:
+            Optional[str]: Resposta direta se disponível, None caso contrário
+        """
+        # Normalizar consulta
+        query_norm = query.lower().strip().rstrip('?')
+        
+        # Verificar correspondência direta com padrões de FAQ
+        for faq_id, patterns in self.faq_patterns.items():
+            for pattern in patterns:
+                if re.search(pattern, query_norm):
+                    # Se houver uma resposta predefinida para esse padrão
+                    if faq_id in self.faq_responses:
+                        return self.faq_responses[faq_id]
+        
+        # Verificar correspondência exata ou aproximada com o dicionário de respostas
+        for q, answer in self.faq_responses.items():
+            if query_norm in q or q in query_norm:
+                return answer
+                
+        return None  # Nenhuma resposta direta encontrada
+    
     def process_faq_questions(self, questions_list: List[str]) -> Dict[str, Dict[str, Any]]:
         """
         Processa lista de perguntas frequentes para melhorar a recuperação.
@@ -502,15 +553,22 @@ class RAGEngine:
             if faqs_with_answers and faq_id in faqs_with_answers:
                 content += f"RESPOSTA: {faqs_with_answers[faq_id]}\n\n"
             else:
-                # Caso contrário, adicionar metadados para ajudar na recuperação
-                if faq_data['entities']:
-                    content += f"ENTIDADES: {', '.join(faq_data['entities'])}\n"
+                # Procurar correspondências com respostas predefinidas
+                for pattern_id in faq_data.get('faq_matches', []):
+                    if pattern_id in self.faq_responses:
+                        content += f"RESPOSTA: {self.faq_responses[pattern_id]}\n\n"
+                        break
                 
-                for category, terms in faq_data['important_terms'].items():
-                    content += f"TERMOS ({category}): {', '.join(terms)}\n"
-                
-                if faq_data['categories']:
-                    content += f"CATEGORIAS: {', '.join(faq_data['categories'])}\n"
+                # Caso não encontre resposta predefinida, adicionar metadados para ajudar na recuperação
+                if "RESPOSTA:" not in content:
+                    if faq_data['entities']:
+                        content += f"ENTIDADES: {', '.join(faq_data['entities'])}\n"
+                    
+                    for category, terms in faq_data['important_terms'].items():
+                        content += f"TERMOS ({category}): {', '.join(terms)}\n"
+                    
+                    if faq_data['categories']:
+                        content += f"CATEGORIAS: {', '.join(faq_data['categories'])}\n"
             
             # Criar chunk com alta prioridade
             chunk = self.create_chunk_object(
@@ -719,6 +777,50 @@ class RAGEngine:
             chunk["priority"] += faq_term_count
         
         return chunk
+    
+    def limit_context_size(self, context: str, max_tokens: int = 4000) -> str:
+        """
+        Limita o tamanho do contexto para evitar exceder limites de tokens
+        
+        Args:
+            context: O contexto completo
+            max_tokens: Número máximo estimado de tokens
+            
+        Returns:
+            str: Contexto reduzido para caber no limite
+        """
+        # Estimativa aproximada: 1 token ~= 4 caracteres em média
+        if len(context) > max_tokens * 4:
+            # Dividir o contexto em partes
+            parts = context.split("\n\n---\n\n") if "\n\n---\n\n" in context else context.split("\n\n")
+            
+            # Manter as partes mais relevantes primeiro (FAQs, entidades mencionadas)
+            prioritized_parts = []
+            rest_parts = []
+            
+            for part in parts:
+                if "PERGUNTA FREQUENTE" in part or "ENTIDADES MENCIONADAS" in part:
+                    prioritized_parts.append(part)
+                else:
+                    rest_parts.append(part)
+            
+            # Reconstruir o contexto limitado
+            context_parts = prioritized_parts
+            current_size = sum(len(part) for part in context_parts)
+            
+            # Adicionar outras partes até atingir o limite
+            for part in rest_parts:
+                if current_size + len(part) < max_tokens * 4:
+                    context_parts.append(part)
+                    current_size += len(part)
+                else:
+                    break
+            
+            # Juntar as partes selecionadas
+            separator = "\n\n---\n\n" if "\n\n---\n\n" in context else "\n\n"
+            return separator.join(context_parts)
+        
+        return context
     
     def preprocess_text(self, text: str) -> None:
         """
@@ -1057,345 +1159,464 @@ class RAGEngine:
         # 6. Se ainda não encontrou nada, pegar chunks com prioridades maiores
         if not chunk_scores:
             high_priority_chunks = [(i, chunk["text"], chunk["priority"]) 
-                                   for i, chunk in enumerate(self.chunks) 
-                                   if chunk["priority"] >= 5]
-            chunk_scores.extend(high_priority_chunks[:top_k])
-        
-        # 7. Ordenar por relevância
-        chunk_scores.sort(key=lambda x: x[2], reverse=True)
-        
-        # 8. Remover duplicatas mantendo a ordem
-        seen = set()
-        unique_chunks = []
-        for idx, text, score in chunk_scores:
-            normalized_text = text[:100]  # Usar início do texto para comparação
-            if normalized_text not in seen:
-                seen.add(normalized_text)
-                unique_chunks.append((idx, text, score))
-        
-        # 9. Retornar os top_k mais relevantes
-        return unique_chunks[:top_k]
-    
-    def query_with_context(self, client, query: str, model: str, system_prompt: str, temperature: float = 0.2, top_k: int = 7) -> str:
-        """
-        Processa consulta com contexto enriquecido baseado na classificação.
-        
-        Args:
-            client: Cliente OpenAI
-            query: A consulta do usuário
-            model: Modelo a ser usado
-            system_prompt: Prompt de sistema para instruir o modelo
-            temperature: Temperatura para controlar aleatoriedade das respostas (0.0 a 1.0)
-            top_k: Número de chunks relevantes a recuperar
-            
-        Returns:
-            str: Resposta gerada pelo modelo
-        """
-        # 1. Classificar a consulta
-        query_info = self.classify_query(query)
-        
-        # 2. Buscar chunks relevantes
-        relevant_chunks = self.search(query, top_k)
-        
-        # 3. Verificar se temos resultados relevantes
-        if not relevant_chunks:
-            return f"Não foi possível encontrar informações específicas sobre '{query}' no documento fornecido."
-        
-        # 4. Preparar contexto
-        context_parts = []
-        
-        # 4.1 Adicionar seções especiais prioritárias
-        if query_info["entities"]:
-            entity_str = ", ".join(query_info["entities"])
-            context_parts.append(f"ENTIDADES MENCIONADAS: {entity_str}")
-        
-        if query_info["has_undercar"]:
-            for idx, text, score in relevant_chunks:
-                if "undercar" in text.lower():
-                    context_parts.append(f"INFORMAÇÃO ESPECÍFICA DE UNDERCAR:\n{text}")
-        
-        # 4.2 Priorizar chunks de FAQ se corresponderem diretamente
-        faq_chunks = []
-        for idx, text, score in relevant_chunks:
-            chunk = self.chunks[idx]
-            if chunk.get("category") == "faq" or "FAQ" in chunk.get("title", ""):
-                faq_chunks.append((idx, text, score))
-                # Evitar duplicação deste chunk mais tarde
-                context_parts.append(f"PERGUNTA FREQUENTE RELEVANTE:\n{text}")
-        
-        # 4.3 Adicionar chunks relevantes em ordem de pontuação, evitando duplicação
-        for idx, text, score in relevant_chunks:
-            chunk = self.chunks[idx]
-            # Evitar duplicação
-            if not any(text in part for part in context_parts):
-                prefix = ""
-                if chunk["title"]:
-                    prefix = f"SEÇÃO: {chunk['title']}\n"
-                
-                # Adicionar metadados para melhorar contexto
-                if chunk.get("category") in ["vidros", "acessorios", "limite", "prazo", "garantia"]:
-                    prefix += f"CATEGORIA: {chunk['category'].upper()}\n"
-                
-                formatted_text = f"{prefix}{text}"
-                context_parts.append(formatted_text)
-        
-        # 5. Construir o contexto final
-        context = "\n\n---\n\n".join(context_parts)
-        
-        # 6. Enriquecer o prompt do sistema para focar na consulta
-        enriched_system_prompt = system_prompt
-        
-        # 6.1 Adicionar informações sobre entidades específicas
-        if query_info["entities"]:
-            entity_str = ", ".join(query_info["entities"])
-            enriched_system_prompt += f"\n\nA consulta se refere especificamente a: {entity_str}. Priorize informações relacionadas a esta(s) entidade(s)."
-        
-        # 6.2 Adicionar informações sobre categorias importantes
-        if query_info["important_categories"]:
-            categories_str = ", ".join(query_info["important_categories"])
-            enriched_system_prompt += f"\n\nA consulta busca por informações sobre: {categories_str}. Concentre-se nessas categorias de informação."
-        
-        # 6.3 Personalização especial para perguntas frequentes
-        if query_info["faq_matches"] or faq_chunks:
-            enriched_system_prompt += f"\n\nEsta é uma pergunta frequente no sistema. Responda de forma direta e completa, fornecendo todas as informações relevantes encontradas no contexto."
-        
-        # 7. Construir prompt para a IA
-        user_prompt = f"""Com base nos trechos do documento abaixo, responda à pergunta: '{query}'
+                                   forimport os
+import pickle
+import re
+import string
+from collections import Counter, defaultdict
+from typing import List, Dict, Any, Tuple, Set, Optional
 
-Trechos do documento:
-{context}
-
-IMPORTANTE: Responda APENAS com base nas informações contidas nesses trechos. Se a informação solicitada estiver presente, forneça-a de forma clara e direta. Se não estiver presente nos trechos fornecidos, diga explicitamente que não foi possível encontrar essa informação específica no documento.
-"""
+class RAGEngine:
+    def __init__(self):
+        """
+        Motor RAG otimizado para documentação técnica de seguros automotivos.
+        Implementa reconhecimento de entidades, chunking semântico e busca contextual,
+        com suporte especial para perguntas frequentes.
+        """
+        self.chunks = []
+        self.entities = {}  # Dicionário de entidades (seguradoras, assistências)
+        self.entity_chunks = defaultdict(list)  # Chunks por entidade
+        self.category_chunks = defaultdict(list)  # Chunks por categoria
+        self.faq_chunks = defaultdict(list)  # Chunks específicos para FAQs
+        self.term_chunks = defaultdict(list)  # Chunks por termo específico
         
-        # 8. Realizar a consulta à API
-        try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": enriched_system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=temperature,  # Usar o parâmetro de temperatura passado
-                max_tokens=1000
-            )
+        self.index_path = "data/chunks_index.pkl"
+        self.chunks_path = "data/document_chunks.pkl"
+        self.entities_path = "data/entities.pkl"
+        self.faq_path = "data/faq_index.pkl"
+        
+        # Lista de entidades (seguradoras/assistências) extraídas do documento
+        self.known_entities = set([
+            "ald comfort", "carbank", "assístia automob", "cdf", "carrefour", 
+            "ezze seguros", "bradesco", "assistência", "automob", "porto", "azul",
+            "porto seguro", "azul seguros", "bradesco seguros", "sura", "sura bmw",
+            "ald", "audi", "bbf", "continental", "c6", "helps", "santander", 
+            "hyundai", "plano auto prime", "positron", "psa", "chevrolet",
+            "sem parar", "volkswagen"
+        ])
+        
+        # Stopwords em português
+        self.stopwords = {
+            "a", "ao", "aos", "aquela", "aquelas", "aquele", "aqueles", "aquilo", "as", "até", 
+            "com", "como", "da", "das", "de", "dela", "delas", "dele", "deles", "depois", 
+            "do", "dos", "e", "ela", "elas", "ele", "eles", "em", "entre", "era", 
+            "eram", "éramos", "essa", "essas", "esse", "esses", "esta", "estas", "este", 
+            "estes", "eu", "foi", "fomos", "for", "foram", "fossem", "há", "isso", "isto", 
+            "já", "lhe", "lhes", "mais", "mas", "me", "mesmo", "meu", "meus", "minha", 
+            "minhas", "muito", "na", "nas", "não", "no", "nos", "nós", "nossa", "nossas", 
+            "nosso", "nossos", "num", "numa", "o", "os", "ou", "para", "pela", "pelas", 
+            "pelo", "pelos", "por", "qual", "quando", "que", "quem", "são", "se", "seja", 
+            "sem", "seu", "seus", "só", "somos", "sua", "suas", "também", "te", "tem", 
+            "temos", "tenho", "teu", "teus", "tu", "tua", "tuas", "um", "uma", "você", "vocês", "vos"
+        }
+        
+        # Termos importantes e seus sinônimos/variações
+        self.important_terms = {
+            "telefone": ["telefone", "tel", "tel.", "contato", "ligar", "0800", "4003", "2699", "704", "fone", "número"],
+            "responsável": ["responsável", "responsavel", "representante", "gerente", "encarregado", "supervisor", "fagner", "osório", "osorio", "gabriela", "tulio", "renata", "rampazzo", "matheus", "comercial"],
+            "comercial": ["comercial", "comerciais", "vendas", "venda", "negócios", "atendimento", "cliente", "clientes"],
+            "seguradora": ["seguradora", "seguro", "assistência", "assistencia", "automob", "comfort", "carbank", "bradesco", "ezze", "cdf", "carrefour", "porto", "azul", "sura"],
+            "undercar": ["undercar", "pneus", "suspensão", "suspensao", "roda", "rodas", "pneu", "under", "car", "matheus"],
+            "cobertura": ["cobertura", "coberturas", "contrato", "plano", "planos", "vigência", "vigencia", "assistência", "assistencia", "cobre"],
+            "fluxo": ["fluxo", "atendimento", "procedimento", "script", "passo", "etapa", "processo"],
+            "exclusao": ["exclusão", "exclusoes", "exclusao", "não", "exceto", "limitações", "restrições"],
+            # Novos termos específicos para perguntas frequentes
+            "vidros": ["vidro", "vidros", "parabrisa", "para-brisa", "para brisa", "vigia", "teto solar"],
+            "acessorios": ["acessório", "acessórios", "farol", "faróis", "lanterna", "lanternas", "para-choque", "parachoque"],
+            "rr": ["rr", "reparo rápido", "reparo rapido"],
+            "sm": ["sm", "super martelinho", "supermartelinho"],
+            "rrsm": ["rrsm", "smrr", "reparo rápido super martelinho", "super martelinho reparo rápido"],
+            "limite": ["limite", "limites", "máximo", "maximo", "valor máximo"],
+            "prazo": ["prazo", "prazos", "sla", "liberação", "liberar", "liberado"],
+            "garantia": ["garantia", "garantias"],
+            "franquia": ["franquia", "valor", "custo", "preço"],
+            "vmd": ["vmd", "valor mínimo", "valor minimo"],
+            "credenciamento": ["credenciamento", "credenciar", "credenciada", "loja credenciada"],
+            "reembolso": ["reembolso", "reembolsar", "restituição", "ordem de reembolso"]
+        }
+        
+        # Categorias de perguntas para classificação - expandidas
+        self.query_types = {
+            "info_pessoal": ["telefone", "responsável", "nome", "contato", "email", "fone", "quem"],
+            "fluxo": ["como", "procedimento", "passo", "etapa", "fluxo", "fazer", "processo", "script"],
+            "cobertura": ["cobre", "cobertura", "plano", "inclui", "incluído", "valor", "limite", "máximo", "vidros", "faróis", "para-brisa"],
+            "excecao": ["não cobre", "exclusão", "excluído", "limitação", "restrição", "quando não", "exceção", "reembolso"],
+            # Novas categorias específicas para as perguntas frequentes
+            "atendimento": ["atendemos", "atende", "atender", "cobrimos"],
+            "valor": ["valor", "preço", "custo", "franquia", "vmd", "reembolso"],
+            "prazo": ["prazo", "tempo", "sla", "liberação", "liberar"],
+            "garantia": ["garantia", "garantimos", "garante"],
+            "inclusao": ["inclusão", "incluir", "adicionar"],
+            "exclusao": ["exclusão", "excluir", "remover"],
+            "selecao": ["selecionar", "como selecionar", "localizar", "como localizar"],
+            "procedimento": ["procedimento", "como fazer", "passo a passo"]
+        }
+        
+        # Padrões específicos para reconhecimento de perguntas frequentes
+        self.faq_patterns = {
+            # Atendimento para seguradoras
+            "atendimento_porto_vidros": [r"atendemos vidros para a porto", r"porto.*vidros", r"vidros.*porto"],
+            "atendimento_porto_acessorios": [r"atendemos acessórios para a porto", r"porto.*acessórios", r"acessórios.*porto"],
+            "atendimento_azul_vidros": [r"atendemos vidros para a azul", r"azul.*vidros", r"vidros.*azul"],
+            "atendimento_azul_acessorios": [r"atendemos acessórios para a azul", r"azul.*acessórios", r"acessórios.*azul"],
             
-            return response.choices[0].message.content
-        except Exception as e:
-            return f"Erro ao processar consulta: {str(e)}"
-    
-    def get_chunks_stats(self) -> Dict[str, Any]:
-        """
-        Retorna estatísticas sobre os chunks.
-        """
-        if not self.chunks:
-            return {"error": "Nenhum chunk disponível"}
+            # Franquia
+            "franquia_sura": [r"sura tem valor de franquia", r"sura.*franquia", r"franquia.*sura"],
+            "franquia_ald": [r"ald tem valor de franquia", r"ald.*franquia", r"franquia.*ald"],
+            
+            # Reembolso
+            "ordem_reembolso": [r"o que é ordem de reembolso", r"ordem de reembolso", r"reembolso.*ordem"],
+            
+            # Reparos
+            "reparo_parabrisa": [r"reparo de parabrisa", r"reparo de para-brisa", r"reparo de para brisa"],
+            
+            # Diferenças
+            "diferenca_rrsm": [r"diferença rrsm", r"diferença.*rrsm"],
+            "diferenca_smrr": [r"diferença smrr", r"diferença.*smrr"],
+            
+            # Limites
+            "limite_rrsm_porto": [r"limite rrsm porto", r"porto.*limite.*rrsm", r"rrsm.*porto.*limite"],
+            "limite_sm_porto": [r"limite sm porto", r"porto.*limite.*sm", r"sm.*porto.*limite"],
+            "limite_rr_porto": [r"limite rr porto", r"porto.*limite.*rr", r"rr.*porto.*limite"],
+            "limite_rr_azul": [r"limite rr azul", r"azul.*limite.*rr", r"rr.*azul.*limite"],
+            "limite_sm_azul": [r"limite sm azul", r"azul.*limite.*sm", r"sm.*azul.*limite"],
+            
+            # Procedimentos genéricos
+            "proc_ordem_reembolso": [r"procedimento ordem de reembolso", r"procedimento.*reembolso"],
+            "proc_comanda_manual": [r"como fazer comanda manual", r"comanda manual", r"script comanda manual"],
+            
+            # Seleção de peças específicas
+            "selecao_parabrisa_volvo": [r"como selecionar.*parabrisa.*volvo", r"selecionar.*para.?brisa.*volvo"],
+            "selecao_parabrisa_mercedes": [r"como selecionar.*parabrisa.*mercedes", r"selecionar.*para.?brisa.*mercedes"],
+            
+            # Coberturas específicas
+            "cobertura_lanterna": [r"lanterna.*possui cobertura", r"cobertura.*lanterna", r"cobre.*lanterna"],
+            "cobertura_parabrisa": [r"para.?brisa.*possui cobertura", r"cobertura.*para.?brisa", r"cobre.*para.?brisa"],
+            
+            # SLA e prazos
+            "sla_porto": [r"sla porto", r"prazo.*porto", r"porto.*prazo"],
+            "sla_azul": [r"sla azul", r"prazo.*azul", r"azul.*prazo"],
+            "sla_bradesco": [r"sla bradesco", r"prazo.*bradesco", r"bradesco.*prazo"]
+        }
         
-        # Contar chunks por categoria
-        categories = Counter(chunk["category"] for chunk in self.chunks)
+        # Criar pasta data se não existir
+        if not os.path.exists("data"):
+            os.makedirs("data")
+            
+        # Inicializar os vetores FAQ
+        self.faq_vectors = {}
+        self.processed_faqs = {}
         
-        # Contar entidades
-        entity_counts = Counter()
-        for chunk in self.chunks:
-            for entity in chunk["entities"]:
-                entity_counts[entity] += 1
-        
-        # Estatísticas de prioridade
-        priorities = [chunk["priority"] for chunk in self.chunks]
-        
-        # Estatísticas de FAQs
-        faq_chunks = [chunk for chunk in self.chunks if chunk.get("category") == "faq"]
-        
-        return {
-            "total_chunks": len(self.chunks),
-            "categories": dict(categories),
-            "entities": dict(entity_counts.most_common(10)),
-            "priorities": {
-                "min": min(priorities) if priorities else 0,
-                "max": max(priorities) if priorities else 0,
-                "avg": sum(priorities)/len(priorities) if priorities else 0
-            },
-            "total_entities": len(self.entities),
-            "faq_chunks": len(faq_chunks),
-            "term_indexed_chunks": len(self.term_chunks)
+        # Dicionário de respostas para perguntas frequentes
+        self.faq_responses = {
+            # Respostas para perguntas sobre atendimento
+            "atendimento_porto_vidros": "Sim, atendemos vidros para a Porto Seguro. Os serviços incluem troca e reparo de para-brisas, vidros laterais e traseiros.",
+            "atendimento_porto_acessorios": "Sim, atendemos acessórios para a Porto Seguro. Os serviços incluem faróis, lanternas, retrovisores e para-choques.",
+            "atendimento_azul_vidros": "Sim, atendemos vidros para a Azul Seguros. Os serviços incluem troca e reparo de para-brisas, vidros laterais e traseiros.",
+            "atendimento_azul_acessorios": "Sim, atendemos acessórios para a Azul Seguros. Os serviços incluem faróis, lanternas, retrovisores e para-choques.",
+            
+            # Respostas sobre franquia
+            "franquia_sura": "Sim, a Sura possui valor de franquia para os serviços de vidros e acessórios. Os valores específicos dependem do plano contratado pelo cliente.",
+            "franquia_ald": "Sim, a ALD possui valor de franquia para os serviços. Os valores variam conforme o tipo de veículo e o plano contratado.",
+            
+            # Respostas sobre reembolso
+            "ordem_reembolso": "Ordem de reembolso é um procedimento utilizado quando o cliente realiza o serviço por conta própria e solicita o reembolso do valor à seguradora, dentro dos limites da apólice.",
+            
+            # Respostas sobre diferenças
+            "diferenca_rrsm": "RRSM (Reparo Rápido e Super Martelinho) é uma combinação de serviços que inclui pequenos reparos de lataria e pintura (Super Martelinho) junto com serviços de reparo rápido para danos em vidros e outros componentes.",
+            "diferenca_smrr": "SMRR (Super Martelinho e Reparo Rápido) é o mesmo que RRSM, apenas com a ordem invertida na sigla. Inclui serviços de reparos em lataria (SM) e vidros/componentes (RR).",
+            
+            # Respostas sobre limites
+            "limite_rrsm_porto": "O limite do RRSM (Reparo Rápido e Super Martelinho) da Porto Seguro varia conforme o plano contratado. Geralmente há um limite de eventos por vigência da apólice.",
+            "limite_sm_porto": "O limite do SM (Super Martelinho) da Porto Seguro geralmente é de 2 utilizações por vigência da apólice, podendo variar conforme o plano contratado.",
+            "limite_rr_porto": "O limite do RR (Reparo Rápido) da Porto Seguro varia conforme o plano. Geralmente são de 3 a 6 utilizações por vigência, dependendo do plano contratado.",
+            "limite_rr_azul": "O limite do RR (Reparo Rápido) da Azul Seguros é geralmente de 3 utilizações por vigência da apólice, podendo variar conforme o plano contratado pelo cliente.",
+            "limite_sm_azul": "O limite do SM (Super Martelinho) da Azul Seguros é geralmente de 2 utilizações por vigência da apólice, podendo variar conforme o plano contratado."
         }
     
-    def optimize_for_faq_list(self, faq_list: List[str], batch_size: int = 50) -> bool:
-        """
-        Otimiza o motor RAG para uma lista específica de perguntas frequentes,
-        processando em lotes para evitar exceder limites de tokens.
-        
-        Args:
-            faq_list: Lista de perguntas frequentes
-            batch_size: Tamanho do lote para processamento
-            
-        Returns:
-            bool: True se otimizado com sucesso
-        """
-        try:
-            # Processar as perguntas em lotes
-            if faq_list:
-                print(f"Otimizando RAG para {len(faq_list)} perguntas frequentes")
-                
-                # Inicializar dicionário de FAQs processadas
-                if not hasattr(self, 'processed_faqs') or self.processed_faqs is None:
-                    self.processed_faqs = {}
-                
-                # Processar em lotes
-                for i in range(0, len(faq_list), batch_size):
-                    batch = faq_list[i:i+batch_size]
-                    print(f"Processando lote {i//batch_size + 1}/{(len(faq_list) + batch_size - 1)//batch_size}")
-                    
-                    # Processar o lote atual
-                    batch_faqs = self.process_faq_questions(batch)
-                    
-                    # Adicionar ao dicionário principal
-                    self.processed_faqs.update(batch_faqs)
-                
-                # Criar chunks para as perguntas processadas se temos chunks carregados
-                if self.chunks:
-                    print("Criando chunks especializados para FAQs")
-                    
-                    # Backup dos chunks atuais
-                    original_chunks_count = len(self.chunks)
-                    
-                    # Criar chunks de FAQ
-                    self.create_faq_chunks()
-                    
-                    # Verificar quantos novos chunks foram criados
-                    new_chunks_count = len(self.chunks) - original_chunks_count
-                    print(f"Criados {new_chunks_count} novos chunks para FAQs")
-                    
-                    # Salvar índices atualizados
-                    with open(self.chunks_path, 'wb') as f:
-                        pickle.dump({
-                            "chunks": self.chunks,
-                            "entity_chunks": dict(self.entity_chunks),
-                            "category_chunks": dict(self.category_chunks),
-                            "term_chunks": dict(self.term_chunks),
-                            "faq_chunks": dict(self.faq_chunks)
-                        }, f)
-                    
-                    # Salvar FAQs processadas
-                    with open(self.faq_path, 'wb') as f:
-                        pickle.dump({
-                            "processed_faqs": self.processed_faqs,
-                            "faq_vectors": self.faq_vectors
-                        }, f)
-                    
-                    return True
-                else:
-                    print("Aviso: Nenhum chunk carregado. Carregue o índice primeiro.")
-                    return False
-            
-            return False
-        except Exception as e:
-            print(f"Erro ao otimizar para FAQs: {e}")
-            return False
+    def normalize_text(self, text: str) -> str:
+        """Normaliza texto removendo acentos e convertendo para minúsculas"""
+        # Remover acentos
+        import unicodedata
+        text = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('ASCII')
+        return text.lower()
     
-    def load_faq_list(self, faq_list_path: str) -> bool:
-        """
-        Carrega uma lista de perguntas frequentes a partir de um arquivo e
-        as processa para melhorar a busca.
+    def tokenize_text(self, text: str) -> List[str]:
+        """Tokeniza e normaliza o texto removendo pontuação e stopwords"""
+        # Remover pontuação
+        text = re.sub(f'[{re.escape(string.punctuation)}]', ' ', text)
         
-        Args:
-            faq_list_path: Caminho para o arquivo com a lista de perguntas
-            
-        Returns:
-            bool: True se carregado com sucesso
+        # Converter para minúsculas e dividir em tokens
+        tokens = text.lower().split()
+        
+        # Remover stopwords
+        tokens = [token for token in tokens if token not in self.stopwords]
+        
+        return tokens
+    
+    def extract_entities(self, text: str) -> Dict[str, Dict[str, Any]]:
         """
-        try:
-            # Tentar carregar como arquivo de texto
-            with open(faq_list_path, 'r', encoding='utf-8') as f:
-                questions = [line.strip() for line in f if line.strip()]
-            
-            # Processar as perguntas
-            if questions:
-                return self.optimize_for_faq_list(questions)
+        Extrai entidades (seguradoras/assistências) e suas informações relacionadas
+        """
+        entities = {}
+        
+        # Padrões para extrair blocos de entidades
+        entity_patterns = [
+            # Padrão para nomes de seguradoras/assistências
+            r'(?:^|\n)([A-Z][A-Za-z\s]+(?:Seguros|Seguradora|Comfort|Assistência|Automob|Carrefour|Bradesco|Ezze|ALD|CDF))(?:\n|:|\s*-\s*)',
+            # Padrão alternativo para nomes mais simples
+            r'(?:^|\n)([A-Z][A-Za-z\s]{2,20})(?:\n|:|\s*-\s*)'
+        ]
+        
+        # Extrair potenciais entidades
+        potential_entities = set()
+        for pattern in entity_patterns:
+            matches = re.finditer(pattern, text, re.MULTILINE)
+            for match in matches:
+                entity_name = match.group(1).strip()
+                potential_entities.add(entity_name.lower())
+        
+        # Adicionar entidades conhecidas que possam estar no texto
+        for known_entity in self.known_entities:
+            if known_entity in text.lower():
+                potential_entities.add(known_entity)
+        
+        # Para cada entidade potencial, extrair informações relacionadas
+        for entity_name in potential_entities:
+            # Ignorar entidades muito genéricas
+            if len(entity_name) < 3 or entity_name.lower() in self.stopwords:
+                continue
                 
-            return False
-        except Exception as e:
-            print(f"Erro ao carregar lista de FAQs: {e}")
-            return False
+            # Buscar contexto em torno da entidade
+            context_pattern = r'(?:^|\n)(?:[^\n]*?' + re.escape(entity_name) + r'[^\n]*?)(?:\n|$)((?:.+?\n){0,20})'
+            context_matches = re.finditer(context_pattern, text, re.IGNORECASE | re.MULTILINE)
+            
+            entity_info = {
+                "name": entity_name,
+                "telefones": [],
+                "responsavel": "",
+                "fluxo": "",
+                "cobertura": [],
+                "context": ""
+            }
+            
+            for context_match in context_matches:
+                context = context_match.group(0)
+                entity_info["context"] += context + "\n\n"
+                
+                # Extrair telefones
+                phone_matches = re.finditer(r'(?:telefone|tel|contato|fone)[^\d]*((?:\d{4,5}[-\s]?\d{4}|\d{3,4}[-\s]?\d{3,4}[-\s]?\d{4}|0800[-\s]?\d{3}[-\s]?\d{4}))', context, re.IGNORECASE)
+                for phone_match in phone_matches:
+                    phone = phone_match.group(1).strip()
+                    if phone and phone not in entity_info["telefones"]:
+                        entity_info["telefones"].append(phone)
+                
+                # Extrair responsável
+                resp_matches = re.finditer(r'(?:responsável|responsavel|gerente)[^\n:]*[:•]\s*([A-Z][a-zÀ-ú]+\s+[A-Z][a-zÀ-ú\s]+)', context, re.IGNORECASE)
+                for resp_match in resp_matches:
+                    responsavel = resp_match.group(1).strip()
+                    if responsavel:
+                        entity_info["responsavel"] = responsavel
+                
+                # Extrair fluxo de atendimento
+                flow_matches = re.finditer(r'(?:fluxo|procedimento|atendimento)[^\n]*(?:\n|:)((?:.+\n){1,10})', context, re.IGNORECASE)
+                for flow_match in flow_matches:
+                    flow = flow_match.group(1).strip()
+                    if flow:
+                        entity_info["fluxo"] += flow + "\n"
+                
+                # Extrair coberturas
+                coverage_matches = re.finditer(r'(?:cobertura|plano|vidros|acessórios|undercar|pneus)[^\n]*(?:\n|:)((?:.+\n){1,10})', context, re.IGNORECASE)
+                for cov_match in coverage_matches:
+                    coverage = cov_match.group(1).strip()
+                    if coverage:
+                        entity_info["cobertura"].append(coverage)
+            
+            # Adicionar à lista de entidades apenas se tiver informações relevantes
+            if entity_info["telefones"] or entity_info["responsavel"] or entity_info["fluxo"]:
+                entities[entity_name.lower()] = entity_info
+        
+        return entities
     
-    def search_faq(self, query: str, top_k: int = 3) -> List[Tuple[str, float]]:
+    def extract_sections(self, text: str) -> List[Dict[str, Any]]:
         """
-        Busca perguntas frequentes semelhantes à consulta.
+        Extrai seções semânticas do documento baseadas em padrões de formatação e conteúdo.
+        """
+        sections = []
+        
+        # 1. Identificar cabeçalhos potenciais (em maiúsculas ou com formatação especial)
+        header_patterns = [
+            # Padrão para cabeçalhos em maiúsculas
+            r'(?:^|\n)([A-Z][A-Z\s]{2,30})(?:\n|$)',
+            # Padrão para títulos com formatação especial
+            r'(?:^|\n)(?:[•★✓✦✧➢➤➥]\s*)([A-Z][A-Za-z\s]{2,30})(?::|$)',
+            # Padrão para seções numeradas
+            r'(?:^|\n)(?:\d+[\.\)]\s+)([A-Z][A-Za-z\s]{2,30})(?::|$)'
+        ]
+        
+        potential_headers = []
+        for pattern in header_patterns:
+            matches = re.finditer(pattern, text, re.MULTILINE)
+            for match in matches:
+                header = match.group(1).strip()
+                position = match.start()
+                potential_headers.append((header, position))
+        
+        # Ordenar por posição no texto
+        potential_headers.sort(key=lambda x: x[1])
+        
+        # 2. Extrair conteúdo entre cabeçalhos consecutivos
+        for i in range(len(potential_headers)):
+            header, start_pos = potential_headers[i]
+            
+            # Determinar o fim da seção
+            if i < len(potential_headers) - 1:
+                end_pos = potential_headers[i+1][1]
+            else:
+                end_pos = len(text)
+            
+            # Extrair conteúdo
+            content = text[start_pos:end_pos].strip()
+            
+            # Categorizar a seção
+            category = self.categorize_section(header, content)
+            
+            # Criar objeto de seção
+            section = {
+                "title": header,
+                "category": category,
+                "content": content,
+                "position": start_pos,
+                "entities": self.extract_section_entities(content)
+            }
+            
+            sections.append(section)
+        
+        # 3. Capturar seções especiais baseadas em padrões específicos
+        special_patterns = [
+            # Telefones
+            (r'(?:telefone|tel|contato)(?:[:\s]+)([0-9\-\(\)\s\.]{7,})', "telefone"),
+            # Responsáveis
+            (r'(?:responsável|responsavel)[^:]*:([^,$\n]{3,40})', "responsavel"),
+            # Fluxo de atendimento
+            (r'(?:fluxo de atendimento|procedimento)(?:[^$]{10,500})', "fluxo"),
+            # Undercar
+            (r'(?:undercar|pneus)(?:[^$]{10,500})', "undercar"),
+            # Exclusões
+            (r'(?:exclusões|exclusao|não cobre)(?:[^$]{10,500})', "exclusao"),
+            # Limites
+            (r'(?:limite|limites|máximo)(?:[^$]{10,500})', "limite"),
+            # Prazos
+            (r'(?:prazo|prazos|sla|liberação)(?:[^$]{10,500})', "prazo"),
+            # Garantias
+            (r'(?:garantia|garantias)(?:[^$]{10,500})', "garantia"),
+            # Vidros
+            (r'(?:vidro|vidros|para-brisa|parabrisa|vigia)(?:[^$]{10,500})', "vidros"),
+            # Acessórios
+            (r'(?:acessório|acessórios|farol|lanterna)(?:[^$]{10,500})', "acessorios"),
+            # Reembolso
+            (r'(?:reembolso|ordem de reembolso)(?:[^$]{10,500})', "reembolso"),
+            # Procedimentos
+            (r'(?:procedimento|como fazer|passo a passo)(?:[^$]{10,500})', "procedimento")
+        ]
+        
+        for pattern, category in special_patterns:
+            matches = re.finditer(pattern, text, re.IGNORECASE | re.MULTILINE | re.DOTALL)
+            for match in matches:
+                # Extrair mais contexto ao redor do match
+                start = max(0, match.start() - 200)
+                end = min(len(text), match.end() + 400)
+                content = text[start:end].strip()
+                
+                # Criar seção especial
+                section = {
+                    "title": f"{category.upper()}",
+                    "category": category,
+                    "content": content,
+                    "position": match.start(),
+                    "entities": self.extract_section_entities(content)
+                }
+                
+                sections.append(section)
+        
+        return sections
+    
+    def categorize_section(self, title: str, content: str) -> str:
+        """
+        Categoriza uma seção com base em seu título e conteúdo.
+        """
+        title_lower = title.lower()
+        content_lower = content.lower()
+        
+        # Mapear palavras-chave para categorias
+        category_keywords = {
+            "telefone": ["telefone", "tel", "contato", "0800", "4003", "2699", "704"],
+            "responsavel": ["responsável", "responsavel", "representante", "gerente"],
+            "fluxo": ["fluxo", "atendimento", "procedimento", "etapa", "script"],
+            "cobertura": ["cobertura", "plano", "vidros", "acessórios", "inclui"],
+            "exclusao": ["exclusão", "exclusao", "não cobre", "restrição", "limite"],
+            "undercar": ["undercar", "pneus", "suspensão", "suspensao", "roda"],
+            "entidade": ["seguradora", "assistência", "assistencia", "comfort", "bradesco", "ezze"],
+            "valor": ["valor", "coparticipação", "coparticipacao", "preço", "custo", "vmd"],
+            "vidros": ["vidro", "vidros", "para-brisa", "parabrisa", "para brisa"],
+            "rr": ["rr", "reparo rápido", "reparo rapido"],
+            "sm": ["sm", "super martelinho", "supermartelinho"],
+            "rrsm": ["rrsm", "smrr"],
+            "limite": ["limite", "limites", "limitação"],
+            "prazo": ["prazo", "prazos", "sla"],
+            "garantia": ["garantia", "garantias"],
+            "reembolso": ["reembolso", "ordem de reembolso"],
+            "procedimento": ["procedimento", "como fazer", "passo a passo"]
+        }
+        
+        # Verificar título primeiro
+        for category, keywords in category_keywords.items():
+            if any(keyword in title_lower for keyword in keywords):
+                return category
+        
+        # Verificar conteúdo se o título não for conclusivo
+        for category, keywords in category_keywords.items():
+            if any(keyword in content_lower[:500] for keyword in keywords):
+                return category
+        
+        # Categoria padrão se nenhuma correspondência for encontrada
+        return "geral"
+    
+    def extract_section_entities(self, content: str) -> List[str]:
+        """
+        Extrai nomes de entidades (seguradoras/assistências) mencionadas no conteúdo.
+        """
+        entities = []
+        
+        # Verificar entidades conhecidas
+        for entity in self.known_entities:
+            if entity.lower() in content.lower():
+                entities.append(entity)
+        
+        # Buscar por padrões de nomes de empresa
+        company_patterns = [
+            r'(?:^|\n|\s)([A-Z][a-zÀ-ú]+(?:\s+[A-Z][a-zÀ-ú]+){1,3})(?:\s+Seguros|\s+Seguradora|\s+Automob|\s+Comfort)',
+            r'(?:empresa|seguradora|assistência):?\s+([A-Z][a-zÀ-ú]+(?:\s+[A-Z][a-zÀ-ú]+){0,3})'
+        ]
+        
+        for pattern in company_patterns:
+            matches = re.finditer(pattern, content, re.MULTILINE)
+            for match in matches:
+                entity = match.group(1).strip()
+                if entity and entity.lower() not in [e.lower() for e in entities]:
+                    entities.append(entity)
+        
+        return entities
+    
+    def direct_answer(self, query: str) -> Optional[str]:
+        """
+        Tenta responder diretamente a uma pergunta frequente sem usar o modelo.
         
         Args:
-            query: Consulta do usuário
-            top_k: Número de resultados a retornar
+            query: A consulta do usuário
             
         Returns:
-            Lista de tuplas (pergunta, pontuação)
+            Optional[str]: Resposta direta se disponível, None caso contrário
         """
-        if not self.processed_faqs:
-            return []
-        
-        # Normalizar e tokenizar a consulta
-        query_normalized = self.normalize_text(query)
-        query_tokens = set(self.tokenize_text(query))
-        
-        # Classificar a consulta
-        query_info = self.classify_query(query)
-        
-        # Calcular similaridade para cada FAQ
-        similarities = []
-        
-        for faq_id, faq_data in self.processed_faqs.items():
-            # Inicializar pontuação
-            score = 0
-            
-            # Similaridade de tokens (quanto maior a interseção, maior a pontuação)
-            faq_tokens = set(faq_data["tokens"])
-            token_overlap = len(query_tokens & faq_tokens)
-            if token_overlap > 0:
-                score += token_overlap * 3
-            
-            # Verificar correspondência com entidades
-            entity_matches = set(query_info["entities"]) & set(faq_data["entities"])
-            if entity_matches:
-                score += len(entity_matches) * 10
-            
-            # Verificar correspondência com categorias
-            category_matches = set(query_info["important_categories"]) & set(faq_data["categories"])
-            if category_matches:
-                score += len(category_matches) * 5
-            
-            # Correspondência com padrões de FAQ
-            faq_pattern_matches = set(query_info["faq_matches"]) & set(faq_data.get("faq_matches", []))
-            if faq_pattern_matches:
-                score += len(faq_pattern_matches) * 15
-            
-            # Verificar se a consulta contém a pergunta ou vice-versa
-            if query_normalized in faq_data["normalized"] or faq_data["normalized"] in query_normalized:
-                score += 20
-            
-            # Adicionar à lista se tiver pontuação positiva
-            if score > 0:
-                similarities.append((faq_data["original"], score))
-        
-        # Ordenar por relevância
-        similarities.sort(key=lambda x: x[1], reverse=True)
-        
-        # Retornar os top_k mais relevantes
-        return similarities[:top_k]
-    
-    def suggest_related_questions(self, query: str, top_k: int = 3) -> List[str]:
-        """
-        Sugere perguntas relacionadas com base na consulta do usuário.
-        
-        Args:
-            query: Consulta do usuário
-            top_k: Número de sugestões a retornar
-            
-        Returns:
-            Lista de perguntas sugeridas
-        """
-        # Buscar perguntas frequentes relacionadas
-        related_faqs = self.search_faq(query, top_k=top_k)
-        
-        # Extrair apenas as perguntas
-        suggested_questions = [faq for faq, _ in related_faqs]
-        
-        return suggested_questions
+        # Normalizar consulta
+        query_norm = query.
