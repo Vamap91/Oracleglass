@@ -1,10 +1,12 @@
-# Aqui a Magica Acontece, entrando com RAG na operação
 import os
 import pickle
 import re
 import string
 from collections import Counter, defaultdict
 from typing import List, Dict, Any, Tuple, Set, Optional
+import numpy as np
+import faiss
+from sentence_transformers import SentenceTransformer
 
 class RAGEngine:
     def __init__(self):
