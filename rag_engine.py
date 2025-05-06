@@ -1,5 +1,8 @@
 # Aqui a Magica Acontece, entrando com RAG na operação
-# rag_engine.py
+"""
+RAG Engine Otimizado - Motor de Recuperação Aumentada por Geração com suporte avançado a perguntas frequentes
+"""
+
 import os
 import pickle
 import re
@@ -11,20 +14,29 @@ class RAGEngine:
     def __init__(self):
         """
         Motor RAG otimizado para documentação técnica de seguros automotivos.
-        Implementa reconhecimento de entidades, chunking semântico e busca contextual.
+        Implementa reconhecimento de entidades, chunking semântico e busca contextual,
+        com suporte especial para perguntas frequentes.
         """
         self.chunks = []
         self.entities = {}  # Dicionário de entidades (seguradoras, assistências)
         self.entity_chunks = defaultdict(list)  # Chunks por entidade
         self.category_chunks = defaultdict(list)  # Chunks por categoria
+        self.faq_chunks = defaultdict(list)  # Chunks específicos para FAQs
+        self.term_chunks = defaultdict(list)  # Chunks por termo específico
+        
         self.index_path = "data/chunks_index.pkl"
         self.chunks_path = "data/document_chunks.pkl"
         self.entities_path = "data/entities.pkl"
+        self.faq_path = "data/faq_index.pkl"
         
         # Lista de entidades (seguradoras/assistências) extraídas do documento
         self.known_entities = set([
             "ald comfort", "carbank", "assístia automob", "cdf", "carrefour", 
-            "ezze seguros", "bradesco", "assistência", "automob"
+            "ezze seguros", "bradesco", "assistência", "automob", "porto", "azul",
+            "porto seguro", "azul seguros", "bradesco seguros", "sura", "sura bmw",
+            "ald", "audi", "bbf", "continental", "c6", "helps", "santander", 
+            "hyundai", "plano auto prime", "positron", "psa", "chevrolet",
+            "sem parar", "volkswagen"
         ])
         
         # Stopwords em português
@@ -45,26 +57,99 @@ class RAGEngine:
         # Termos importantes e seus sinônimos/variações
         self.important_terms = {
             "telefone": ["telefone", "tel", "tel.", "contato", "ligar", "0800", "4003", "2699", "704", "fone", "número"],
-            "responsável": ["responsável", "responsavel", "representante", "gerente", "encarregado", "supervisor", "fagner", "osório", "osorio", "gabriela", "tulio", "renata", "rampazzo", "matheus"],
+            "responsável": ["responsável", "responsavel", "representante", "gerente", "encarregado", "supervisor", "fagner", "osório", "osorio", "gabriela", "tulio", "renata", "rampazzo", "matheus", "comercial"],
             "comercial": ["comercial", "comerciais", "vendas", "venda", "negócios", "atendimento", "cliente", "clientes"],
-            "seguradora": ["seguradora", "seguro", "assistência", "assistencia", "automob", "comfort", "carbank", "bradesco", "ezze", "cdf", "carrefour"],
+            "seguradora": ["seguradora", "seguro", "assistência", "assistencia", "automob", "comfort", "carbank", "bradesco", "ezze", "cdf", "carrefour", "porto", "azul", "sura"],
             "undercar": ["undercar", "pneus", "suspensão", "suspensao", "roda", "rodas", "pneu", "under", "car", "matheus"],
-            "cobertura": ["cobertura", "coberturas", "contrato", "plano", "planos", "vigência", "vigencia", "assistência", "assistencia"],
+            "cobertura": ["cobertura", "coberturas", "contrato", "plano", "planos", "vigência", "vigencia", "assistência", "assistencia", "cobre"],
             "fluxo": ["fluxo", "atendimento", "procedimento", "script", "passo", "etapa", "processo"],
-            "exclusao": ["exclusão", "exclusoes", "exclusao", "não", "exceto", "limitações", "restrições"]
+            "exclusao": ["exclusão", "exclusoes", "exclusao", "não", "exceto", "limitações", "restrições"],
+            # Novos termos específicos para perguntas frequentes
+            "vidros": ["vidro", "vidros", "parabrisa", "para-brisa", "para brisa", "vigia", "teto solar"],
+            "acessorios": ["acessório", "acessórios", "farol", "faróis", "lanterna", "lanternas", "para-choque", "parachoque"],
+            "rr": ["rr", "reparo rápido", "reparo rapido"],
+            "sm": ["sm", "super martelinho", "supermartelinho"],
+            "rrsm": ["rrsm", "smrr", "reparo rápido super martelinho", "super martelinho reparo rápido"],
+            "limite": ["limite", "limites", "máximo", "maximo", "valor máximo"],
+            "prazo": ["prazo", "prazos", "sla", "liberação", "liberar", "liberado"],
+            "garantia": ["garantia", "garantias"],
+            "franquia": ["franquia", "valor", "custo", "preço"],
+            "vmd": ["vmd", "valor mínimo", "valor minimo"],
+            "credenciamento": ["credenciamento", "credenciar", "credenciada", "loja credenciada"],
+            "reembolso": ["reembolso", "reembolsar", "restituição", "ordem de reembolso"]
         }
         
-        # Categorias de perguntas para classificação
+        # Categorias de perguntas para classificação - expandidas
         self.query_types = {
             "info_pessoal": ["telefone", "responsável", "nome", "contato", "email", "fone", "quem"],
             "fluxo": ["como", "procedimento", "passo", "etapa", "fluxo", "fazer", "processo", "script"],
             "cobertura": ["cobre", "cobertura", "plano", "inclui", "incluído", "valor", "limite", "máximo", "vidros", "faróis", "para-brisa"],
-            "excecao": ["não cobre", "exclusão", "excluído", "limitação", "restrição", "quando não", "exceção", "reembolso"]
+            "excecao": ["não cobre", "exclusão", "excluído", "limitação", "restrição", "quando não", "exceção", "reembolso"],
+            # Novas categorias específicas para as perguntas frequentes
+            "atendimento": ["atendemos", "atende", "atender", "cobrimos"],
+            "valor": ["valor", "preço", "custo", "franquia", "vmd", "reembolso"],
+            "prazo": ["prazo", "tempo", "sla", "liberação", "liberar"],
+            "garantia": ["garantia", "garantimos", "garante"],
+            "inclusao": ["inclusão", "incluir", "adicionar"],
+            "exclusao": ["exclusão", "excluir", "remover"],
+            "selecao": ["selecionar", "como selecionar", "localizar", "como localizar"],
+            "procedimento": ["procedimento", "como fazer", "passo a passo"]
+        }
+        
+        # Padrões específicos para reconhecimento de perguntas frequentes
+        self.faq_patterns = {
+            # Atendimento para seguradoras
+            "atendimento_porto_vidros": [r"atendemos vidros para a porto", r"porto.*vidros", r"vidros.*porto"],
+            "atendimento_porto_acessorios": [r"atendemos acessórios para a porto", r"porto.*acessórios", r"acessórios.*porto"],
+            "atendimento_azul_vidros": [r"atendemos vidros para a azul", r"azul.*vidros", r"vidros.*azul"],
+            "atendimento_azul_acessorios": [r"atendemos acessórios para a azul", r"azul.*acessórios", r"acessórios.*azul"],
+            
+            # Franquia
+            "franquia_sura": [r"sura tem valor de franquia", r"sura.*franquia", r"franquia.*sura"],
+            "franquia_ald": [r"ald tem valor de franquia", r"ald.*franquia", r"franquia.*ald"],
+            
+            # Reembolso
+            "ordem_reembolso": [r"o que é ordem de reembolso", r"ordem de reembolso", r"reembolso.*ordem"],
+            
+            # Reparos
+            "reparo_parabrisa": [r"reparo de parabrisa", r"reparo de para-brisa", r"reparo de para brisa"],
+            
+            # Diferenças
+            "diferenca_rrsm": [r"diferença rrsm", r"diferença.*rrsm"],
+            "diferenca_smrr": [r"diferença smrr", r"diferença.*smrr"],
+            
+            # Limites
+            "limite_rrsm_porto": [r"limite rrsm porto", r"porto.*limite.*rrsm", r"rrsm.*porto.*limite"],
+            "limite_sm_porto": [r"limite sm porto", r"porto.*limite.*sm", r"sm.*porto.*limite"],
+            "limite_rr_porto": [r"limite rr porto", r"porto.*limite.*rr", r"rr.*porto.*limite"],
+            "limite_rr_azul": [r"limite rr azul", r"azul.*limite.*rr", r"rr.*azul.*limite"],
+            "limite_sm_azul": [r"limite sm azul", r"azul.*limite.*sm", r"sm.*azul.*limite"],
+            
+            # Procedimentos genéricos
+            "proc_ordem_reembolso": [r"procedimento ordem de reembolso", r"procedimento.*reembolso"],
+            "proc_comanda_manual": [r"como fazer comanda manual", r"comanda manual", r"script comanda manual"],
+            
+            # Seleção de peças específicas
+            "selecao_parabrisa_volvo": [r"como selecionar.*parabrisa.*volvo", r"selecionar.*para.?brisa.*volvo"],
+            "selecao_parabrisa_mercedes": [r"como selecionar.*parabrisa.*mercedes", r"selecionar.*para.?brisa.*mercedes"],
+            
+            # Coberturas específicas
+            "cobertura_lanterna": [r"lanterna.*possui cobertura", r"cobertura.*lanterna", r"cobre.*lanterna"],
+            "cobertura_parabrisa": [r"para.?brisa.*possui cobertura", r"cobertura.*para.?brisa", r"cobre.*para.?brisa"],
+            
+            # SLA e prazos
+            "sla_porto": [r"sla porto", r"prazo.*porto", r"porto.*prazo"],
+            "sla_azul": [r"sla azul", r"prazo.*azul", r"azul.*prazo"],
+            "sla_bradesco": [r"sla bradesco", r"prazo.*bradesco", r"bradesco.*prazo"]
         }
         
         # Criar pasta data se não existir
         if not os.path.exists("data"):
             os.makedirs("data")
+            
+        # Inicializar os vetores FAQ
+        self.faq_vectors = {}
+        self.processed_faqs = {}
     
     def normalize_text(self, text: str) -> str:
         """Normaliza texto removendo acentos e convertendo para minúsculas"""
@@ -235,7 +320,21 @@ class RAGEngine:
             # Undercar
             (r'(?:undercar|pneus)(?:[^$]{10,500})', "undercar"),
             # Exclusões
-            (r'(?:exclusões|exclusao|não cobre)(?:[^$]{10,500})', "exclusao")
+            (r'(?:exclusões|exclusao|não cobre)(?:[^$]{10,500})', "exclusao"),
+            # Limites
+            (r'(?:limite|limites|máximo)(?:[^$]{10,500})', "limite"),
+            # Prazos
+            (r'(?:prazo|prazos|sla|liberação)(?:[^$]{10,500})', "prazo"),
+            # Garantias
+            (r'(?:garantia|garantias)(?:[^$]{10,500})', "garantia"),
+            # Vidros
+            (r'(?:vidro|vidros|para-brisa|parabrisa|vigia)(?:[^$]{10,500})', "vidros"),
+            # Acessórios
+            (r'(?:acessório|acessórios|farol|lanterna)(?:[^$]{10,500})', "acessorios"),
+            # Reembolso
+            (r'(?:reembolso|ordem de reembolso)(?:[^$]{10,500})', "reembolso"),
+            # Procedimentos
+            (r'(?:procedimento|como fazer|passo a passo)(?:[^$]{10,500})', "procedimento")
         ]
         
         for pattern, category in special_patterns:
@@ -275,7 +374,16 @@ class RAGEngine:
             "exclusao": ["exclusão", "exclusao", "não cobre", "restrição", "limite"],
             "undercar": ["undercar", "pneus", "suspensão", "suspensao", "roda"],
             "entidade": ["seguradora", "assistência", "assistencia", "comfort", "bradesco", "ezze"],
-            "valor": ["valor", "coparticipação", "coparticipacao", "preço", "custo", "vmd"]
+            "valor": ["valor", "coparticipação", "coparticipacao", "preço", "custo", "vmd"],
+            "vidros": ["vidro", "vidros", "para-brisa", "parabrisa", "para brisa"],
+            "rr": ["rr", "reparo rápido", "reparo rapido"],
+            "sm": ["sm", "super martelinho", "supermartelinho"],
+            "rrsm": ["rrsm", "smrr"],
+            "limite": ["limite", "limites", "limitação"],
+            "prazo": ["prazo", "prazos", "sla"],
+            "garantia": ["garantia", "garantias"],
+            "reembolso": ["reembolso", "ordem de reembolso"],
+            "procedimento": ["procedimento", "como fazer", "passo a passo"]
         }
         
         # Verificar título primeiro
@@ -316,6 +424,129 @@ class RAGEngine:
                     entities.append(entity)
         
         return entities
+    
+    def process_faq_questions(self, questions_list: List[str]) -> Dict[str, Dict[str, Any]]:
+        """
+        Processa lista de perguntas frequentes para melhorar a recuperação.
+        
+        Args:
+            questions_list: Lista de perguntas frequentes
+            
+        Returns:
+            Dicionário com informações processadas das perguntas
+        """
+        processed_faqs = {}
+        
+        for i, question in enumerate(questions_list):
+            question_text = question.strip()
+            question_id = f"faq_{i+1}"
+            
+            # Normalizar e tokenizar
+            normalized = self.normalize_text(question_text)
+            tokens = self.tokenize_text(question_text)
+            
+            # Extrair entidades mencionadas
+            entities = []
+            for entity in self.known_entities:
+                if entity.lower() in normalized:
+                    entities.append(entity)
+            
+            # Identificar termos importantes
+            important_terms = {}
+            for category, terms in self.important_terms.items():
+                matches = [term for term in terms if term in normalized]
+                if matches:
+                    important_terms[category] = matches
+            
+            # Identificar categorias da pergunta
+            query_categories = []
+            for category, keywords in self.query_types.items():
+                if any(keyword in normalized for keyword in keywords):
+                    query_categories.append(category)
+            
+            # Verificar correspondência com padrões de FAQ
+            faq_matches = []
+            for faq_id, patterns in self.faq_patterns.items():
+                for pattern in patterns:
+                    if re.search(pattern, normalized):
+                        faq_matches.append(faq_id)
+                        break
+            
+            # Armazenar informações processadas
+            processed_faqs[question_id] = {
+                "original": question_text,
+                "normalized": normalized,
+                "tokens": tokens,
+                "entities": entities,
+                "important_terms": important_terms,
+                "categories": query_categories,
+                "faq_matches": faq_matches
+            }
+        
+        return processed_faqs
+    
+    def create_faq_chunks(self, faqs_with_answers=None):
+        """
+        Cria chunks especializados para FAQs
+        
+        Args:
+            faqs_with_answers: Dicionário opcional com respostas para FAQs
+        """
+        # Se não tiver respostas, usar o processamento para criar chunks de alta prioridade
+        # baseados apenas nas perguntas, que serão usados para melhorar a busca
+        for faq_id, faq_data in self.processed_faqs.items():
+            # Conteúdo base será a pergunta
+            content = f"PERGUNTA FREQUENTE: {faq_data['original']}\n\n"
+            
+            # Se temos resposta para esta pergunta, adicioná-la
+            if faqs_with_answers and faq_id in faqs_with_answers:
+                content += f"RESPOSTA: {faqs_with_answers[faq_id]}\n\n"
+            else:
+                # Caso contrário, adicionar metadados para ajudar na recuperação
+                if faq_data['entities']:
+                    content += f"ENTIDADES: {', '.join(faq_data['entities'])}\n"
+                
+                for category, terms in faq_data['important_terms'].items():
+                    content += f"TERMOS ({category}): {', '.join(terms)}\n"
+                
+                if faq_data['categories']:
+                    content += f"CATEGORIAS: {', '.join(faq_data['categories'])}\n"
+            
+            # Criar chunk com alta prioridade
+            chunk = self.create_chunk_object(
+                content=content,
+                title=f"FAQ: {faq_data['original']}",
+                category="faq",
+                entities=faq_data['entities']
+            )
+            
+            # Aumentar prioridade para FAQs
+            chunk["priority"] = 100
+            
+            # Adicionar metadados específicos para busca
+            chunk["faq_id"] = faq_id
+            chunk["faq_categories"] = faq_data['categories']
+            chunk["faq_terms"] = faq_data['important_terms']
+            
+            # Adicionar aos chunks
+            self.chunks.append(chunk)
+            chunk_index = len(self.chunks) - 1
+            
+            # Indexar por ID de FAQ
+            self.faq_chunks[faq_id].append(chunk_index)
+            
+            # Indexar por entidades
+            for entity in faq_data['entities']:
+                self.entity_chunks[entity.lower()].append(chunk_index)
+            
+            # Indexar por categorias
+            for category in faq_data['categories']:
+                self.category_chunks[category].append(chunk_index)
+            
+            # Indexar por termos importantes
+            for category, terms in faq_data['important_terms'].items():
+                for term in terms:
+                    self.term_chunks[term].append(chunk_index)
     
     def create_semantic_chunks(self, sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
@@ -413,6 +644,12 @@ class RAGEngine:
             
             # Indexar por categoria
             self.category_chunks[chunk["category"]].append(i)
+            
+            # Indexar por termos importantes
+            for term_category, count in chunk.get("important_matches", {}).items():
+                for term in self.important_terms.get(term_category, []):
+                    if term in chunk["text"].lower():
+                        self.term_chunks[term].append(i)
         
         return chunks
     
@@ -451,9 +688,35 @@ class RAGEngine:
         if category in ["telefone", "responsavel", "undercar"]:
             chunk["priority"] += 3
         
+        # Prioridades por tipo de categoria
+        category_priorities = {
+            "vidros": 8,
+            "acessorios": 8,
+            "rr": 7,
+            "sm": 7,
+            "rrsm": 7,
+            "limite": 6,
+            "prazo": 6,
+            "garantia": 6,
+            "franquia": 7,
+            "reembolso": 8,
+            "procedimento": 9,
+            "faq": 100  # Máxima prioridade para FAQs
+        }
+        
+        # Aplicar prioridade baseada na categoria
+        if category in category_priorities:
+            chunk["priority"] = max(chunk["priority"], category_priorities[category])
+        
         # Ajustar prioridade com base em correspondências importantes
         if len(important_matches) > 2:
             chunk["priority"] += 2
+        
+        # Aumentar prioridade se tiver termos relacionados a perguntas frequentes
+        faq_terms = ["como", "procedimento", "limite", "prazo", "valor", "cobre", "atende"]
+        faq_term_count = sum(1 for term in faq_terms if term in content.lower())
+        if faq_term_count >= 2:
+            chunk["priority"] += faq_term_count
         
         return chunk
     
@@ -478,19 +741,58 @@ class RAGEngine:
             pickle.dump({
                 "chunks": self.chunks,
                 "entity_chunks": dict(self.entity_chunks),
-                "category_chunks": dict(self.category_chunks)
+                "category_chunks": dict(self.category_chunks),
+                "term_chunks": dict(self.term_chunks),
+                "faq_chunks": dict(self.faq_chunks)
             }, f)
         
         with open(self.entities_path, 'wb') as f:
             pickle.dump(self.entities, f)
         
+        # 5. Salvar FAQs processadas, se houver
+        if self.processed_faqs:
+            with open(self.faq_path, 'wb') as f:
+                pickle.dump({
+                    "processed_faqs": self.processed_faqs,
+                    "faq_vectors": self.faq_vectors
+                }, f)
+        
         print(f"Índices e chunks salvos com sucesso!")
     
-    def create_index(self, text: str) -> bool:
+    def create_index(self, text: str, faq_questions: List[str] = None) -> bool:
         """
-        Cria índices a partir do texto do documento.
+        Cria índices a partir do texto do documento e perguntas frequentes.
+        
+        Args:
+            text: Texto do documento
+            faq_questions: Lista opcional de perguntas frequentes
+            
+        Returns:
+            bool: True se índice criado com sucesso
         """
+        # Processar perguntas frequentes, se fornecidas
+        if faq_questions:
+            print(f"Processando {len(faq_questions)} perguntas frequentes")
+            self.processed_faqs = self.process_faq_questions(faq_questions)
+        
+        # Realizar pré-processamento do documento
         self.preprocess_text(text)
+        
+        # Criar chunks específicos para FAQs
+        if self.processed_faqs:
+            print("Criando chunks especializados para FAQs")
+            self.create_faq_chunks()
+            
+            # Salvar índices atualizados com FAQs
+            with open(self.chunks_path, 'wb') as f:
+                pickle.dump({
+                    "chunks": self.chunks,
+                    "entity_chunks": dict(self.entity_chunks),
+                    "category_chunks": dict(self.category_chunks),
+                    "term_chunks": dict(self.term_chunks),
+                    "faq_chunks": dict(self.faq_chunks)
+                }, f)
+        
         return True
     
     def load_index(self) -> bool:
@@ -505,12 +807,28 @@ class RAGEngine:
                     self.chunks = data["chunks"]
                     self.entity_chunks = defaultdict(list, data["entity_chunks"])
                     self.category_chunks = defaultdict(list, data["category_chunks"])
+                    
+                    # Carregar índices adicionais se disponíveis
+                    if "term_chunks" in data:
+                        self.term_chunks = defaultdict(list, data["term_chunks"])
+                    if "faq_chunks" in data:
+                        self.faq_chunks = defaultdict(list, data["faq_chunks"])
                 
                 # Carregar entidades
                 with open(self.entities_path, 'rb') as f:
                     self.entities = pickle.load(f)
                 
+                # Carregar FAQs, se disponíveis
+                if os.path.exists(self.faq_path):
+                    with open(self.faq_path, 'rb') as f:
+                        faq_data = pickle.load(f)
+                        self.processed_faqs = faq_data.get("processed_faqs", {})
+                        self.faq_vectors = faq_data.get("faq_vectors", {})
+                
                 print(f"Carregados {len(self.chunks)} chunks e {len(self.entities)} entidades")
+                if self.processed_faqs:
+                    print(f"Carregadas {len(self.processed_faqs)} perguntas frequentes")
+                
                 return True
             return False
         except Exception as e:
@@ -550,11 +868,20 @@ class RAGEngine:
         # 4. Verificar menção específica a "undercar"
         has_undercar = "undercar" in query_lower or any(term in query_lower for term in self.important_terms["undercar"])
         
+        # 5. Verificar correspondência com padrões de FAQ
+        faq_matches = []
+        for faq_id, patterns in self.faq_patterns.items():
+            for pattern in patterns:
+                if re.search(pattern, query_lower):
+                    faq_matches.append(faq_id)
+                    break
+        
         return {
             "entities": detected_entities,
             "type": query_type,
             "important_categories": important_categories,
-            "has_undercar": has_undercar
+            "has_undercar": has_undercar,
+            "faq_matches": faq_matches
         }
     
     def expand_query(self, query: str) -> Set[str]:
@@ -575,11 +902,36 @@ class RAGEngine:
             if any(term in query_lower for term in terms):
                 expanded_terms.update(terms)
         
+        # Adicionar variações específicas para termos técnicos
+        term_variations = {
+            "parabrisa": ["para-brisa", "para brisa"],
+            "para-brisa": ["parabrisa", "para brisa"],
+            "para brisa": ["parabrisa", "para-brisa"],
+            "reparo rapido": ["reparo rápido", "rr"],
+            "reparo rápido": ["reparo rapido", "rr"],
+            "rr": ["reparo rápido", "reparo rapido"],
+            "supermartelinho": ["super martelinho", "sm"],
+            "super martelinho": ["supermartelinho", "sm"],
+            "sm": ["super martelinho", "supermartelinho"],
+            "vidros": ["parabrisa", "para-brisa", "vigia", "vidro"],
+            "acessorios": ["acessórios", "farol", "lanterna"],
+            "acessórios": ["acessorios", "farol", "lanterna"],
+            "parachoque": ["para-choque", "para choque"],
+            "para-choque": ["parachoque", "para choque"],
+            "para choque": ["parachoque", "para-choque"]
+        }
+        
+        # Adicionar variações específicas para os termos da consulta
+        for term in list(expanded_terms):
+            if term in term_variations:
+                expanded_terms.update(term_variations[term])
+        
         return expanded_terms
     
     def search(self, query: str, top_k: int = 7) -> List[Tuple[int, str, float]]:
         """
-        Realiza busca semântica guiada por entidades e categorias.
+        Realiza busca semântica guiada por entidades e categorias,
+        com suporte especial para perguntas frequentes.
         """
         if not self.chunks:
             raise ValueError("Os chunks não foram carregados")
@@ -588,62 +940,102 @@ class RAGEngine:
         query_info = self.classify_query(query)
         expanded_terms = self.expand_query(query)
         
-        # 2. Preparar conjuntos de chunks a considerar
+        # 2. Busca especial para correspondências diretas com FAQ
+        if query_info["faq_matches"]:
+            faq_candidates = set()
+            for faq_id in query_info["faq_matches"]:
+                # Adicionar chunks de FAQ correspondentes
+                for chunk_id in self.faq_chunks.get(faq_id, []):
+                    faq_candidates.add(chunk_id)
+                
+                # Verificar nos processed_faqs também
+                for proc_faq_id, faq_data in self.processed_faqs.items():
+                    if faq_id in faq_data.get("faq_matches", []):
+                        # Adicionar chunks de FAQ correspondentes
+                        for chunk_id in self.faq_chunks.get(proc_faq_id, []):
+                            faq_candidates.add(chunk_id)
+            
+            # Se encontramos candidatos diretos, criar uma lista de resultados de alta prioridade
+            if faq_candidates:
+                faq_results = []
+                for idx in faq_candidates:
+                    chunk = self.chunks[idx]
+                    score = 100  # Pontuação máxima para correspondências diretas de FAQ
+                    faq_results.append((idx, chunk["text"], score))
+                
+                # Ordenar por relevância e retornar os top_k
+                faq_results.sort(key=lambda x: x[2], reverse=True)
+                return faq_results[:top_k]
+        
+        # 3. Preparar conjuntos de chunks a considerar (busca normal)
         candidate_chunks = set()
         
-        # 2.1 Priorizar chunks relacionados às entidades detectadas
+        # 3.1 Priorizar chunks relacionados às entidades detectadas
         for entity in query_info["entities"]:
             candidate_chunks.update(self.entity_chunks.get(entity.lower(), []))
         
-        # 2.2 Considerar chunks de categorias importantes
+        # 3.2 Considerar chunks de categorias importantes
         if query_info["important_categories"]:
             for category in query_info["important_categories"]:
                 candidate_chunks.update(self.category_chunks.get(category, []))
         
-        # 2.3 Busca especial para undercar
+        # 3.3 Busca especial para undercar
         if query_info["has_undercar"]:
             candidate_chunks.update(self.category_chunks.get("undercar", []))
         
-        # 2.4 Se não houver candidatos específicos, considerar todos os chunks
+        # 3.4 Adicionar chunks associados a termos específicos
+        for term in expanded_terms:
+            candidate_chunks.update(self.term_chunks.get(term, []))
+        
+        # 3.5 Se não houver candidatos específicos, considerar todos os chunks
         if not candidate_chunks:
             candidate_chunks = set(range(len(self.chunks)))
         
-        # 3. Pontuar chunks candidatos
+        # 4. Pontuar chunks candidatos
         chunk_scores = []
         
         for idx in candidate_chunks:
             chunk = self.chunks[idx]
             score = 0
             
-            # 3.1 Pontuação base da prioridade do chunk
+            # 4.1 Pontuação base da prioridade do chunk
             score += chunk["priority"]
             
-            # 3.2 Pontuação por correspondência de termos
+            # 4.2 Bônus para chunks de FAQ - máxima prioridade
+            if chunk.get("category") == "faq":
+                score += 50
+            
+            # 4.3 Pontuação por correspondência de termos
             for term in expanded_terms:
                 if term in chunk["tokens"]:
                     # Peso maior para termos da consulta original
                     weight = 3 if term in query.lower() else 1
                     score += chunk["term_freq"].get(term, 0) * weight
             
-            # 3.3 Pontuação adicional para correspondências importantes
+            # 4.4 Pontuação adicional para correspondências importantes
             for category, count in chunk["important_matches"].items():
                 if category in query_info["important_categories"]:
                     score += count * 5
             
-            # 3.4 Bônus para chunks que mencionam entidades da consulta
+            # 4.5 Bônus para chunks que mencionam entidades da consulta
             for entity in query_info["entities"]:
                 if entity in [e.lower() for e in chunk["entities"]]:
                     score += 15
             
-            # 3.5 Bônus especial para undercar se mencionado
+            # 4.6 Bônus especial para undercar se mencionado
             if query_info["has_undercar"] and "undercar" in chunk["text"].lower():
                 score += 25
+            
+            # 4.7 Bônus para chunks que contêm palavras exatas da consulta
+            query_tokens = self.tokenize_text(query)
+            exact_matches = sum(1 for token in query_tokens if token in chunk["tokens"])
+            score += exact_matches * 3
             
             # Adicionar à lista de resultados se tiver pontuação positiva
             if score > 0:
                 chunk_scores.append((idx, chunk["text"], score))
         
-        # 4. Se não encontrou nada relevante, usar busca de fallback
+        # 5. Se não encontrou nada relevante, usar busca de fallback
         if not chunk_scores:
             # Buscar em todos os chunks pela correspondência simples de palavras
             for i, chunk in enumerate(self.chunks):
@@ -656,23 +1048,23 @@ class RAGEngine:
                         score += 1
                 
                 # Priorizar chunks de categorias específicas
-                if chunk["category"] in ["telefone", "responsavel", "undercar", "fluxo"]:
+                if chunk["category"] in ["telefone", "responsavel", "undercar", "fluxo", "vidros", "limite", "prazo"]:
                     score += 2
                 
                 if score > 0:
                     chunk_scores.append((i, chunk["text"], score))
         
-        # 5. Se ainda não encontrou nada, pegar chunks com prioridades maiores
+        # 6. Se ainda não encontrou nada, pegar chunks com prioridades maiores
         if not chunk_scores:
             high_priority_chunks = [(i, chunk["text"], chunk["priority"]) 
                                    for i, chunk in enumerate(self.chunks) 
                                    if chunk["priority"] >= 5]
             chunk_scores.extend(high_priority_chunks[:top_k])
         
-        # 6. Ordenar por relevância
+        # 7. Ordenar por relevância
         chunk_scores.sort(key=lambda x: x[2], reverse=True)
         
-        # 7. Remover duplicatas mantendo a ordem
+        # 8. Remover duplicatas mantendo a ordem
         seen = set()
         unique_chunks = []
         for idx, text, score in chunk_scores:
@@ -681,7 +1073,7 @@ class RAGEngine:
                 seen.add(normalized_text)
                 unique_chunks.append((idx, text, score))
         
-        # 8. Retornar os top_k mais relevantes
+        # 9. Retornar os top_k mais relevantes
         return unique_chunks[:top_k]
     
     def query_with_context(self, client, query: str, model: str, system_prompt: str, temperature: float = 0.2, top_k: int = 7) -> str:
@@ -722,15 +1114,29 @@ class RAGEngine:
                 if "undercar" in text.lower():
                     context_parts.append(f"INFORMAÇÃO ESPECÍFICA DE UNDERCAR:\n{text}")
         
-        # 4.2 Adicionar chunks relevantes em ordem de pontuação
+        # 4.2 Priorizar chunks de FAQ se corresponderem diretamente
+        faq_chunks = []
+        for idx, text, score in relevant_chunks:
+            chunk = self.chunks[idx]
+            if chunk.get("category") == "faq" or "FAQ" in chunk.get("title", ""):
+                faq_chunks.append((idx, text, score))
+                # Evitar duplicação deste chunk mais tarde
+                context_parts.append(f"PERGUNTA FREQUENTE RELEVANTE:\n{text}")
+        
+        # 4.3 Adicionar chunks relevantes em ordem de pontuação, evitando duplicação
         for idx, text, score in relevant_chunks:
             chunk = self.chunks[idx]
             # Evitar duplicação
             if not any(text in part for part in context_parts):
+                prefix = ""
                 if chunk["title"]:
-                    formatted_text = f"SEÇÃO: {chunk['title']}\n{text}"
-                else:
-                    formatted_text = text
+                    prefix = f"SEÇÃO: {chunk['title']}\n"
+                
+                # Adicionar metadados para melhorar contexto
+                if chunk.get("category") in ["vidros", "acessorios", "limite", "prazo", "garantia"]:
+                    prefix += f"CATEGORIA: {chunk['category'].upper()}\n"
+                
+                formatted_text = f"{prefix}{text}"
                 context_parts.append(formatted_text)
         
         # 5. Construir o contexto final
@@ -739,13 +1145,19 @@ class RAGEngine:
         # 6. Enriquecer o prompt do sistema para focar na consulta
         enriched_system_prompt = system_prompt
         
+        # 6.1 Adicionar informações sobre entidades específicas
         if query_info["entities"]:
             entity_str = ", ".join(query_info["entities"])
             enriched_system_prompt += f"\n\nA consulta se refere especificamente a: {entity_str}. Priorize informações relacionadas a esta(s) entidade(s)."
         
+        # 6.2 Adicionar informações sobre categorias importantes
         if query_info["important_categories"]:
             categories_str = ", ".join(query_info["important_categories"])
             enriched_system_prompt += f"\n\nA consulta busca por informações sobre: {categories_str}. Concentre-se nessas categorias de informação."
+        
+        # 6.3 Personalização especial para perguntas frequentes
+        if query_info["faq_matches"] or faq_chunks:
+            enriched_system_prompt += f"\n\nEsta é uma pergunta frequente no sistema. Responda de forma direta e completa, fornecendo todas as informações relevantes encontradas no contexto."
         
         # 7. Construir prompt para a IA
         user_prompt = f"""Com base nos trechos do documento abaixo, responda à pergunta: '{query}'
@@ -791,6 +1203,9 @@ IMPORTANTE: Responda APENAS com base nas informações contidas nesses trechos. 
         # Estatísticas de prioridade
         priorities = [chunk["priority"] for chunk in self.chunks]
         
+        # Estatísticas de FAQs
+        faq_chunks = [chunk for chunk in self.chunks if chunk.get("category") == "faq"]
+        
         return {
             "total_chunks": len(self.chunks),
             "categories": dict(categories),
@@ -800,5 +1215,187 @@ IMPORTANTE: Responda APENAS com base nas informações contidas nesses trechos. 
                 "max": max(priorities) if priorities else 0,
                 "avg": sum(priorities)/len(priorities) if priorities else 0
             },
-            "total_entities": len(self.entities)
+            "total_entities": len(self.entities),
+            "faq_chunks": len(faq_chunks),
+            "term_indexed_chunks": len(self.term_chunks)
         }
+    
+    def load_faq_list(self, faq_list_path: str) -> bool:
+        """
+        Carrega uma lista de perguntas frequentes a partir de um arquivo e
+        as processa para melhorar a busca.
+        
+        Args:
+            faq_list_path: Caminho para o arquivo com a lista de perguntas
+            
+        Returns:
+            bool: True se carregado com sucesso
+        """
+        try:
+            # Tentar carregar como arquivo de texto
+            with open(faq_list_path, 'r', encoding='utf-8') as f:
+                questions = [line.strip() for line in f if line.strip()]
+            
+            # Processar as perguntas
+            if questions:
+                self.processed_faqs = self.process_faq_questions(questions)
+                
+                # Criar chunks para as perguntas processadas
+                if self.chunks:  # Se já temos chunks carregados
+                    self.create_faq_chunks()
+                    
+                    # Salvar dados atualizados
+                    with open(self.faq_path, 'wb') as f:
+                        pickle.dump({
+                            "processed_faqs": self.processed_faqs,
+                            "faq_vectors": self.faq_vectors
+                        }, f)
+                
+                print(f"Carregadas e processadas {len(questions)} perguntas frequentes")
+                return True
+                
+            return False
+        except Exception as e:
+            print(f"Erro ao carregar lista de FAQs: {e}")
+            return False
+    
+    def optimize_for_faq_list(self, faq_list: List[str]) -> bool:
+        """
+        Otimiza o motor RAG para uma lista específica de perguntas frequentes.
+        
+        Args:
+            faq_list: Lista de perguntas frequentes
+            
+        Returns:
+            bool: True se otimizado com sucesso
+        """
+        try:
+            # Processar as perguntas
+            if faq_list:
+                print(f"Otimizando RAG para {len(faq_list)} perguntas frequentes")
+                self.processed_faqs = self.process_faq_questions(faq_list)
+                
+                # Criar chunks para as perguntas processadas se temos chunks carregados
+                if self.chunks:
+                    print("Criando chunks especializados para FAQs")
+                    
+                    # Backup dos chunks atuais
+                    original_chunks_count = len(self.chunks)
+                    
+                    # Criar chunks de FAQ
+                    self.create_faq_chunks()
+                    
+                    # Verificar quantos novos chunks foram criados
+                    new_chunks_count = len(self.chunks) - original_chunks_count
+                    print(f"Criados {new_chunks_count} novos chunks para FAQs")
+                    
+                    # Salvar índices atualizados
+                    with open(self.chunks_path, 'wb') as f:
+                        pickle.dump({
+                            "chunks": self.chunks,
+                            "entity_chunks": dict(self.entity_chunks),
+                            "category_chunks": dict(self.category_chunks),
+                            "term_chunks": dict(self.term_chunks),
+                            "faq_chunks": dict(self.faq_chunks)
+                        }, f)
+                    
+                    # Salvar FAQs processadas
+                    with open(self.faq_path, 'wb') as f:
+                        pickle.dump({
+                            "processed_faqs": self.processed_faqs,
+                            "faq_vectors": self.faq_vectors
+                        }, f)
+                    
+                    return True
+                else:
+                    print("Aviso: Nenhum chunk carregado. Carregue o índice primeiro.")
+                    return False
+            
+            return False
+        except Exception as e:
+            print(f"Erro ao otimizar para FAQs: {e}")
+            return False
+    
+    def search_faq(self, query: str, top_k: int = 3) -> List[Tuple[str, float]]:
+        """
+        Busca perguntas frequentes semelhantes à consulta.
+        
+        Args:
+            query: Consulta do usuário
+            top_k: Número de resultados a retornar
+            
+        Returns:
+            Lista de tuplas (pergunta, pontuação)
+        """
+        if not self.processed_faqs:
+            return []
+        
+        # Normalizar e tokenizar a consulta
+        query_normalized = self.normalize_text(query)
+        query_tokens = set(self.tokenize_text(query))
+        
+        # Classificar a consulta
+        query_info = self.classify_query(query)
+        
+        # Calcular similaridade para cada FAQ
+        similarities = []
+        
+        for faq_id, faq_data in self.processed_faqs.items():
+            # Inicializar pontuação
+            score = 0
+            
+            # Similaridade de tokens (quanto maior a interseção, maior a pontuação)
+            faq_tokens = set(faq_data["tokens"])
+            token_overlap = len(query_tokens & faq_tokens)
+            if token_overlap > 0:
+                score += token_overlap * 3
+            
+            # Verificar correspondência com entidades
+            entity_matches = set(query_info["entities"]) & set(faq_data["entities"])
+            if entity_matches:
+                score += len(entity_matches) * 10
+            
+            # Verificar correspondência com categorias
+            category_matches = set(query_info["important_categories"]) & set(faq_data["categories"])
+            if category_matches:
+                score += len(category_matches) * 5
+            
+            # Correspondência com padrões de FAQ
+            faq_pattern_matches = set(query_info["faq_matches"]) & set(faq_data.get("faq_matches", []))
+            if faq_pattern_matches:
+                score += len(faq_pattern_matches) * 15
+            
+            # Verificar se a consulta contém a pergunta ou vice-versa
+            if query_normalized in faq_data["normalized"] or faq_data["normalized"] in query_normalized:
+                score += 20
+            
+            # Adicionar à lista se tiver pontuação positiva
+            if score > 0:
+                similarities.append((faq_data["original"], score))
+        
+        # Ordenar por relevância
+        similarities.sort(key=lambda x: x[1], reverse=True)
+        
+        # Retornar os top_k mais relevantes
+        return similarities[:top_k]
+    
+    def suggest_related_questions(self, query: str, top_k: int = 3) -> List[str]:
+        """
+        Sugere perguntas relacionadas com base na consulta do usuário.
+        
+        Args:
+            query: Consulta do usuário
+            top_k: Número de sugestões a retornar
+            
+        Returns:
+            Lista de perguntas sugeridas
+        """
+        # Buscar perguntas frequentes relacionadas
+        related_faqs = self.search_faq(query, top_k=top_k)
+        
+        # Extrair apenas as perguntas
+        suggested_questions = [faq for faq, _ in related_faqs]
+        
+        return suggested_questions
+
+
