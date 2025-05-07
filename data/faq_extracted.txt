@@ -1,0 +1,277 @@
+ Atendemos vidros para a porto?
+ Atendemos acessórios para a porto?
+ Atendemos vidros para a azul?
+ Atendemos acessórios para a azul?
+ Sura tem valor de franquia?
+ ALD tem valor de franquia?
+ o que é ordem de reembolso?
+ perguntas reparo de parabrisa
+ perguntas reparo de para-brisa
+ perguntas reparo de para brisa
+ diferença rrsm
+ diferença smrr
+ limite rrsm porto
+ limite smrr porto
+ limite sm porto
+ limite rr porto
+ limite rr azul
+ limite sm azul
+ limite reparo rápido porto
+ limite super martelinho porto
+ limite supermartelinho porto
+ limite reparo rápido porto
+ limite reparo rápido azul
+ limite reparo rápido porto antigo
+ limite reparo rápido porto novo
+ diferença entre limite antigo e novo da porto
+ limites porto
+ limites bradesco
+ limites azul
+ limites sura
+ limites assistia
+ limites automob
+ limites fenauto
+ limites ALD
+ limites Audi
+ limites BBF
+ limites carbank
+ limites continental
+ limites c6
+ limites ezze
+ limites helps
+ limites santander
+ limites hyundai
+ limites plano auto prime
+ limites positron
+ limites PSA
+ limites reparo rapido chevrolet
+ limites sem parar
+ limites volkswagen
+ prazo RR
+ prazo SM
+ prazo reparo rápido
+ prazo reparo rapido
+ prazo vidros
+ prazo acessórios
+ prazo undercar
+ troca de para-choque
+ troca de parachoque
+ troca de para choque
+ troca de peças helps
+ troca de peças santander
+ garantia vidro 
+ garantia reparo rápido
+ garantia reparo rapido
+ garantia rr
+ garantia sm
+ garantia supermartelinho
+ garantia super martelinho
+ garantia acessórios
+ garantia undercar
+ garantia pneus
+ garantia pneu
+ garantia roda
+ higienização de ar-condicionado
+ máquina do vidro
+ cristalização
+ cristalização vidros
+ cristalização parabrisa
+ cristalização para-brisa
+ cristalização para brisa
+ cristalização vigia
+ cristalização vidro porta malas
+ vidro teto solar
+ bradesco teto solar
+ bradesco vidro teto solar
+ bradesco vidro do teto solar
+ sura teto solar
+ sura vidro teto solar
+ sura vidro do teto solar
+ parabrisa scania
+ para-brisa scania
+ como selecionar o parabrisa do scania?
+ como selecionar o parabrisa do scania
+ como falar quando o cliente pede logomarca?
+ bradesco cobre logomarca?
+ sura cobre logomarca?
+ ezze cobre logomarca?
+ como perguntar sobre o degrade?
+ como perguntar sobre aviso de saida de faixa?
+ como perguntar sobre o sensor de chuva?
+ Como perguntar sobre o HUD?
+ Bradesco cobre chuva de granizo?
+ Tem cobertura pra chuva de granizo RR?
+ Tem cobertura pra chuva de granizo RRSM?
+ Comanda Manual
+ Como fazer comanda manual?
+ Script Comanda Manual
+ Como negar um atendimento?
+ Como selecionar o para-brisa do volvo FH?
+ Como selecionar o para brisa do volvo FH?
+ Como selecionar o parabrisa do volvo FH?
+ Lanterna para-choque audi Q3 possui cobertura?
+ Lanterna tampa do porta malas Audi E-TRON possui cobertura?
+ Para-brisa bmw 320IA
+ Para-brisa bmw 118
+ A lanterna traseira do para-choque da BMW IX possui cobertura?
+ A lanterna da tampa do porta-malas do CHERY TIGGO 7 PRO possui cobertura?
+ Como selecionar o vidro parabrisa do chevrolet equinox?
+ As lanternas da tampa do porta malas do Citroen C3 possuem cobertura?
+ A lanterna traseira direita do para-choque do Citroën C3 Picasso possui cobertura?
+ A lanterna traseira esquerda do para-choque do Citroën C3 Picasso possui cobertura?
+ Para-brisa do Citroën DS5 possui cobertura?
+ O vidro vigia do Citroën C4 VTR possui cobertura?
+ O que é pastilha no teto?
+ A lanterna da tampa do porta malas do GWM HAVAL possui cobertura?
+ As lanternas da tampa do porta malas Honda Fit possuem cobertura?
+ A lanterna da tampa do porta malas do Hyundai Azera possui cobertura?
+ A lanterna da tampa do porta malas do Jeep Commander possui cobertura?
+ As lanternas da tampa do porta-malas do Jeep Compass possuem cobertura?
+ Como selecionar o para-brisa da Mercedes C180?
+ Como selecionar o para-brisa da Mercedes A200?
+ Como selecionar o para-brisa da Mercedes E250?
+ Como localizar o vidro do VW Nivus?
+ Procedimento Ordem de Reembolso
+ O que é Sura BMW?
+ Responsável Comercial da ALD
+ Responsável Comercial da Assístia Automob
+ Responsável Comercial da Assístia Fenauto
+ Responsável Comercial da Assístia Plano Auto
+ Responsável Comercial da Audi Protege
+ Responsável Comercial da Azul Seguros
+ Responsável Comercial do Bradesco Seguros
+ Responsável Comercial da BBF
+ Responsável Comercial da Bradesco Financiamentos 
+ Responsável Comercial da Carbank
+ Responsável Comercial da CDF-Carrefour
+ Responsável Comercial da Continental Pneus
+ Responsável Comercial da C6 Bank
+ Responsável Comercial da Ezze Seguros
+ Responsável Comercial da Helps Santander
+ Responsável Comercial da Hyundai Abrahy
+ Responsável Comercial do Plano Auto Prime
+ Responsável Comercial do Porto Seguro
+ Responsável Comercial da Positron
+ Responsável Comercial da PSA
+ Responsável Comercial do Reparo Rápido Chevrolet 
+ Responsável Comercial da Sura
+ Responsável Comercial da Sem Parar
+ Responsável Comercial da Volkswagen Protege
+ VMD da BBF
+ VMD da Bradesco Financiamentos
+  VMD da Carbank
+ VMD da CDF-Carrefour
+ VMD da Continental Pneus
+ VMD da C6 Bank
+ VMD da Ezze Seguros
+ VMD da Helps Santander
+ VMD da Hyundai Abrahy
+ VMD do Plano Auto Prime
+ VMD da Positron
+ VMD da PSA
+ VMD do Reparo Rápido Chevrolet
+ VMD da Sem Parar
+ VMD da Volkswagen Protege
+ O que fazer quando não localizar a Ordem de Serviço/ Pedido?
+ Posso reativar a Ordem de Serviço ou Pedido?
+ Como cancelar uma OS se estiver liberado?
+ O cliente reclamou que a franquia está muito alto.
+ O cliente falou que achou a peça por um valor menor que a franquia.
+ O que fazer se o cliente pedir desconto de franquia?
+ Cliente em loja reclamando do valor de franquia.
+ Cliente com dificuldade no envio de fotos.
+ Link de vistoria com erro.
+ Cliente não recebeu o link de vistoria.
+ O cliente falou que concertou a lataria e quer fazer a troca do farol ou lanterna.
+ Cliente ainda não mandou as fotos.
+ Cliente mandou as fotos no e-mail.
+ Cliente quer fazer vistoria presencial como eu faço?
+ Cliente já realizou a vistoria presencial o que eu faço?
+ Qual o prazo de liberação do pedido para vidros?
+ Qual o prazo de liberação do pedido para acessórios?
+ SLA Vidros.
+ SLA Acessórios.
+ O que fazer se o pedido estiver dentro do SLA e cliente solicita liberação?
+ Se o pedido for alto custo, posso liberar?
+ Valor de Alto Custo para vidros.
+ Valor de Alto Custo para acessórios.
+ Se o pedido for blindado, posso liberar?
+ Se o pedido for Frotas, posso liberar?
+ Se o pedido for Prioridade Concessionária, posso liberar?
+ Pedido liberado acima do Km permitido sem serviço móvel.
+ Liberado com serviço móvel e o cliente não aceita.
+ Troca de cidade, loja acima de 30km pedido liberado.
+ Troca de cidade, loja acima de 30 km pedido em negociação.
+ O que fazer se o pedido estiver fora do SLA e cliente solicitar liberação
+ Se o pedido for de Cargas, quando liberar?
+ Cliente em loja, posso liberar o pedido?
+ Cliente com urgência, posso liberar o pedido?
+ Pedido de vidros vigia, posso liberar em casos de urgência?
+ Pedido de vidros de porta, posso liberar em casos de urgência? 
+ O que fazer com a #ClienteDesejaContato?
+ Quando posso fazer alteração de loja?
+ Passo a Passo para troca de loja.
+ Pedido em Acompanhamento de Peças se a peça estiver indisponível, o que fazer?
+ Pedido em Acompanhamento de Peças se a peça estiver disponível, o que fazer?
+ Se a loja falar que a peça ainda não chegou, o que fazer?
+ Quando preciso pedir rastreio de remessa?
+ O que é OV (Ordem de Venda)?
+ O que é OC (Ordem de Compra)?
+ Se a entrega da Remessa for pela transportadora, quem rastreia?
+ Se a entrega da Remessa for pelos Correios, quem rastreia?
+ Pedido na fila de Agendamento.
+ Em quais situações deve ofertar a análise de reembolso?
+ Cliente precisa enviar orçamento para aprovar reembolso?
+ Procedimento de Reembolso no sistema.
+ Recebi no meu e-mail o orçamento enviado pelo cliente.
+ Nota fiscal e dados bancários, pode estar em nome de terceiros?
+ Quando fazer comanda manual?
+ Inclusão de peças, pedido liberado.
+ Inclusão de peças, pedido no status Agendamento.
+ Inclusão de peças, pedido no status Confirmar Execução.
+ Inclusão de peças, pedido com foto.
+ Inclusão de peças, pedido sem foto.
+ Inclusão de peças, veículo na oficina.
+ Quando usar a hashtag #InclusãodePeça?
+ Inclusão de peças, pedido na Negociação.
+ Inclusão de peças, pedido na Vistoria.
+ O que é peça genérica?
+ Como faço se a peça estiver como genérica no sistema?
+ Tampa traseira de dois lados.
+ Como Incluir a peça no sistema?
+ Exclusão de Peças, pedido liberado.
+ Exclusão de Peças, pedido no status Agendamento.
+ Exclusão de Peças, pedido no status Confirmar Execução.
+ Exclusão de Peças, pedido na Vistoria.
+ Exclusão de Peças, pedido na Negociação.
+ Prazo de liberação do pedido Reparo Rápido?
+ Prazo de liberação do pedido Super Martelinho?
+ SLA Helps Santander.
+ SLA Azul Reparo Rápido.
+ SLA Azul Super Martelinho.
+ SLA Bradesco Reparo Rápido.
+ SLA Bradesco Super Martelinho.
+ SLA Porto Super Martelinho.
+ SLA Porto Reparo Rápido.
+ Quando direcionar a Ordem de Serviço no grupo de Prioridade?
+ Ordem de Serviço dentro do SLA.
+ Ordem de Serviço fora do SLA.
+ Como Negociar uma Ordem de Serviço?
+ Valor permitido para liberar pedido.
+ Se o valor estiver fora do permitido.
+ Procedimento para Troca de Loja.
+ Troca para loja Credenciada aparece no WA na tela de informações da ordem de Serviço.
+ Troca para loja credenciada aparece na tela do aceite como eventual.
+ Troca para loja credenciada aparece na tabela fixa.
+ Prazo de retorno para troca de loja.
+ Troca de Loja Bradesco, procedimento.
+ Troca de loja Porto, procedimento.
+ Troca de loja Azul, procedimento.
+ Quando ofertar o credenciamento?
+ Passo a passo para solicitar o credenciamento.
+ Prazo de análise de credenciamento.
+ Quando ofertar o reembolso?
+ Valor de reembolso para veículo de pequeno porte.
+ Valor de reembolso para veículo de grande porte.
+ Procedimento de reembolso no sistema.
+
