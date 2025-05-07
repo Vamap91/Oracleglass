@@ -37,7 +37,6 @@ class RAGEngine:
         self.known_entities = self._load_json_config(os.path.join(CONFIG_DIR, "known_entities.json"), default_value={"entities": []})["entities"]
         self.important_terms = self._load_json_config(os.path.join(CONFIG_DIR, "important_terms.json"), default_value={})
         self.query_types = self._load_json_config(os.path.join(CONFIG_DIR, "query_types.json"), default_value={})
-        # Os faq_patterns e faq_responses originais podem ser mantidos para uma lógica de FAQ mais complexa no futuro
         self.faq_patterns = self._load_json_config(os.path.join(CONFIG_DIR, "faq_patterns.json"), default_value={})
         self.faq_responses_config = self._load_json_config(os.path.join(CONFIG_DIR, "faq_responses.json"), default_value={})
         
@@ -89,7 +88,7 @@ class RAGEngine:
         self.vector_store_path = os.path.join(PROCESSED_DIR, f"{self.base_processed_filename}_faiss.index")
         self.entities_path = os.path.join(PROCESSED_DIR, f"{self.base_processed_filename}_entities.pkl")
         self.faq_index_path = os.path.join(PROCESSED_DIR, f"{self.base_processed_filename}_faq_index.pkl")
-        self.faq_pairs_path = os.path.join(PROCESSED_DIR, f"{self.base_processed_filename}_faq_pairs.json") # Caminho para o novo arquivo de FAQ
+        self.faq_pairs_path = os.path.join(PROCESSED_DIR, f"{self.base_processed_filename}_faq_pairs.json")
 
     def load_pdf_text(self, pdf_path: str) -> str:
         text = ""
@@ -121,7 +120,7 @@ class RAGEngine:
     def tokenize_text(self, text: str) -> List[str]:
         if not text: return []
         normalized_text = self.normalize_text(text)
-        processed_text = re.sub(r"[\"#$%&\\'()*+,./:;<=>?@[\\]^_`{|}~]", " ", normalized_text)
+        processed_text = re.sub(r"[\"#$%&\\\'()*+,./:;<=>?@[\\]^_`{|}~]", " ", normalized_text)
         processed_text = re.sub(r"\s+", " ", processed_text).strip()
         tokens = processed_text.split()
         if self.stopwords:
@@ -196,7 +195,6 @@ class RAGEngine:
                 self.vector_store = None
                 self.chunks = []
         
-        # Carregar dados de FAQ
         if os.path.exists(self.faq_pairs_path):
             self.faq_data = self._load_json_config(self.faq_pairs_path, default_value={})
             if self.faq_data:
@@ -230,8 +228,6 @@ class RAGEngine:
             return
         
         self.build_vector_store(self.chunks)
-        # Após processar o PDF e construir o vector store, também carregamos/recarregamos os FAQs
-        # pois o faq_pairs.json pode ter sido gerado/atualizado pelo script process_faq_script.py
         if os.path.exists(self.faq_pairs_path):
             self.faq_data = self._load_json_config(self.faq_pairs_path, default_value={})
             if self.faq_data:
@@ -242,61 +238,66 @@ class RAGEngine:
 
         print("Processamento do PDF concluído.")
 
-    def get_answer(self, query: str, k: int = 3) -> Tuple[str, str]:
-        """Obtém uma resposta para a consulta, priorizando FAQs e depois busca semântica."""
-        normalized_query = self.normalize_text(query)
-
-        # 1. Verificar FAQs (correspondência exata normalizada)
-        if self.faq_data:
-            for faq_q, faq_a in self.faq_data.items():
-                if self.normalize_text(faq_q) == normalized_query:
-                    print(f"Resposta encontrada no FAQ para: '{query}'")
-                    return faq_a, "faq"
-        
-        # 2. Se não encontrou no FAQ, realizar busca semântica
+    def search(self, query: str, k: int = 3) -> List[Tuple[str, float]]:
+        """Realiza uma busca semântica e retorna os k chunks mais relevantes com seus scores (distâncias L2)."""
         if not self.vector_store or not self.chunks:
-            # Tenta carregar dados processados se ainda não foram carregados e o pdf_path está definido
             if self.pdf_path and not (self.vector_store and self.chunks):
-                print("Vector store ou chunks não prontos. Tentando carregar dados processados...")
+                print("Vector store ou chunks não prontos para busca. Tentando carregar dados processados...")
                 pdf_filename = os.path.basename(self.pdf_path)
                 self._set_processed_paths(pdf_filename)
                 self.load_processed_data()
             
-            if not self.vector_store or not self.chunks: # Verifica novamente após tentativa de carregamento
-                message = "Vector store não está pronto ou não há chunks carregados. Por favor, processe um PDF primeiro."
-                print(message)
-                return message, "error"
+            if not self.vector_store or not self.chunks:
+                print("Vector store não está pronto ou não há chunks carregados para busca. Por favor, processe um PDF primeiro.")
+                return []
                 
         if not query:
-            return "Consulta vazia.", "error"
+            print("Consulta vazia para busca.")
+            return []
         
         try:
-            print(f"Buscando semanticamente por: '{query}'")
-            query_embedding = self.model.encode([normalized_query]) # Usa a query normalizada
+            normalized_query = self.normalize_text(query)
+            query_embedding = self.model.encode([normalized_query])
             distances, indices = self.vector_store.search(np.array(query_embedding, dtype=np.float32), k)
             
             results = []
             if len(indices[0]) > 0:
                 for i in range(len(indices[0])):
                     chunk_index = indices[0][i]
+                    score = float(distances[0][i]) # Distância L2 como score
                     if 0 <= chunk_index < len(self.chunks):
-                        results.append(self.chunks[chunk_index]) # Apenas o chunk, sem o score por enquanto
-                
-                # Concatenar os chunks relevantes para formar a resposta contextual
-                contextual_answer = "\n\n---\n\n".join(results)
-                return contextual_answer, "semantic_search"
-            else:
-                return "Nenhuma informação relevante encontrada no documento para esta consulta.", "semantic_search_empty"
+                        results.append((self.chunks[chunk_index], score))
+            return results
         except Exception as e:
-            print(f"Erro durante a busca semântica: {e}")
-            return f"Erro durante a busca: {e}", "error"
+            print(f"Erro durante a busca semântica (método search): {e}")
+            return []
 
-    # O método search original pode ser mantido para uso interno ou removido se get_answer o substitui completamente.
-    # Por ora, vou comentá-lo para evitar confusão, já que get_answer é mais completo.
-    # def search(self, query: str, k: int = 5) -> List[Tuple[str, float]]:
-    #     ...
+    def get_answer(self, query: str, k: int = 3) -> Tuple[str, str]:
+        """Obtém uma resposta para a consulta, priorizando FAQs e depois busca semântica."""
+        normalized_query = self.normalize_text(query)
 
-# Exemplo de uso (para teste)
+        if self.faq_data:
+            for faq_q, faq_a in self.faq_data.items():
+                if self.normalize_text(faq_q) == normalized_query:
+                    print(f"Resposta encontrada no FAQ para: '{query}'")
+                    return faq_a, "faq"
+        
+        # Utiliza o método search interno para obter os chunks e scores
+        search_results = self.search(query, k=k)
+
+        if not search_results:
+            # Verifica se o erro foi por falta de processamento ou busca vazia
+            if not self.vector_store or not self.chunks:
+                 message = "Vector store não está pronto ou não há chunks carregados. Por favor, processe um PDF primeiro."
+                 return message, "error"
+            return "Nenhuma informação relevante encontrada no documento para esta consulta.", "semantic_search_empty"
+
+        # Concatenar os chunks relevantes para formar a resposta contextual
+        # O script process_faq_script.py usará o primeiro resultado de self.search diretamente.
+        # Para get_answer, podemos concatenar como antes.
+        contextual_answer = "\n\n---\n\n".join([chunk_text for chunk_text, score in search_results])
+        return contextual_answer, "semantic_search"
+
 if __name__ == "__main__":
     if not os.path.exists(os.path.join(CONFIG_DIR, "known_entities.json")):
         with open(os.path.join(CONFIG_DIR, "known_entities.json"), "w") as f:
@@ -326,43 +327,37 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Não foi possível criar o PDF de teste: {e}")
 
-    # Criar um arquivo faq_pairs.json de exemplo para teste
     example_faq_pairs_path = os.path.join(PROCESSED_DIR, f"{os.path.splitext(TEST_PDF_NAME)[0]}_faq_pairs.json")
     if not os.path.exists(example_faq_pairs_path):
         example_faqs = {
-            "Qual o SLA para vidros?": "O SLA para vidros é de 2 dias, conforme especificado no documento.",
-            "Atendemos vidros para a porto?": "Sim, a Porto Seguro é uma das seguradoras atendidas para serviços de vidros."
+            "Qual o SLA para vidros?": "O SLA para vidros é de 2 dias.",
+            "Qual o SLA para acessórios?": "O SLA para acessórios é de 3 dias.",
+            "Quem contatar para mais detalhes?": "Para mais detalhes, contate a Azul Seguros."
         }
-        try:
-            with open(example_faq_pairs_path, "w", encoding="utf-8") as f:
-                json.dump(example_faqs, f, ensure_ascii=False, indent=4)
-            print(f"Arquivo FAQ de exemplo criado em: {example_faq_pairs_path}")
-        except Exception as e:
-            print(f"Erro ao criar arquivo FAQ de exemplo: {e}")
+        with open(example_faq_pairs_path, "w", encoding="utf-8") as f:
+            json.dump(example_faqs, f, ensure_ascii=False, indent=4)
+        print(f"Arquivo FAQ de exemplo criado em {example_faq_pairs_path}")
 
-    if os.path.exists(TEST_PDF_PATH):
-        print(f"\n--- Testando RAGEngine com {TEST_PDF_PATH} ---")
-        engine = RAGEngine()
-        # É importante que load_and_process_pdf seja chamado para que os caminhos (incluindo faq_pairs_path) sejam definidos
-        # e para que o faq_data seja carregado.
-        engine.load_and_process_pdf(TEST_PDF_PATH, force_reprocess=False) 
+    engine = RAGEngine(pdf_path=TEST_PDF_PATH)
+    
+    print("\n--- Testando get_answer (FAQ) ---")
+    answer, source = engine.get_answer("Qual o SLA para vidros?")
+    print(f"Fonte: {source}\nResposta: {answer}")
 
-        print("\n--- Testando busca com FAQ ---")
-        # Teste 1: Pergunta que deve ser respondida pelo FAQ
-        query_faq = "Qual o SLA para vidros?"
-        answer_faq, source_faq = engine.get_answer(query_faq)
-        print(f"Pergunta: {query_faq}\nFonte: {source_faq}\nResposta: {answer_faq}\n")
+    print("\n--- Testando get_answer (Busca Semântica) ---")
+    answer, source = engine.get_answer("informações sobre a porto seguro")
+    print(f"Fonte: {source}\nResposta: {answer}")
 
-        # Teste 2: Pergunta que NÃO está no FAQ, deve usar busca semântica
-        query_semantic = "informações sobre seguros"
-        answer_semantic, source_semantic = engine.get_answer(query_semantic)
-        print(f"Pergunta: {query_semantic}\nFonte: {source_semantic}\nResposta: {answer_semantic}\n")
-        
-        # Teste 3: Outra pergunta do FAQ
-        query_faq2 = "Atendemos vidros para a porto?"
-        answer_faq2, source_faq2 = engine.get_answer(query_faq2)
-        print(f"Pergunta: {query_faq2}\nFonte: {source_faq2}\nResposta: {answer_faq2}\n")
+    print("\n--- Testando search diretamente ---")
+    search_results_direct = engine.search("informações sobre a porto seguro", k=2)
+    print(f"Resultados da busca direta (search_results_direct): {search_results_direct}")
 
-    else:
-        print(f"Arquivo PDF de teste {TEST_PDF_PATH} não encontrado. Crie-o ou ajuste o caminho.")
-
+    print("\n--- Testando com PDF não existente (para forçar erro de carregamento inicial) ---")
+    engine_no_pdf = RAGEngine() # Sem PDF inicial
+    answer_no_pdf, source_no_pdf = engine_no_pdf.get_answer("Qualquer pergunta")
+    print(f"Fonte: {source_no_pdf}\nResposta: {answer_no_pdf}")
+    # Agora carregando o PDF
+    print("\n--- Carregando PDF no engine_no_pdf ---")
+    engine_no_pdf.load_and_process_pdf(TEST_PDF_PATH)
+    answer_after_load, source_after_load = engine_no_pdf.get_answer("Qual o SLA para acessórios?")
+    print(f"Fonte: {source_after_load}\nResposta: {answer_after_load}")
