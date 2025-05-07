@@ -361,3 +361,4 @@ if __name__ == "__main__":
     engine_no_pdf.load_and_process_pdf(TEST_PDF_PATH)
     answer_after_load, source_after_load = engine_no_pdf.get_answer("Qual o SLA para acessórios?")
     print(f"Fonte: {source_after_load}\nResposta: {answer_after_load}")
+
