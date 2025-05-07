@@ -139,7 +139,7 @@ else:
 
 # Adicionar um rodapé ou informações adicionais
 st.sidebar.markdown("---")
-st.sidebar.markdown("Desenvolvido por Vinicius Paschoa")
+st.sidebar.markdown("Desenvolvido por Manus IA")
 
 # Para executar: streamlit run streamlit_app.py
 
